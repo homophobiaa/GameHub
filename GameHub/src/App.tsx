@@ -7,10 +7,16 @@ import Hero from './components/Hero';
 import SectionHeading from './components/SectionHeading';
 import GamesGrid from './components/GamesGrid';
 import MaintainerCard from './components/MaintainerCard';
+import ContributorsWall from './components/ContributorsWall';
+import TeacherSpotlight from './components/TeacherSpotlight';
+import TechStack from './components/TechStack';
 import gamesData from './data/games.json';
+import teamData from './data/team.json';
 import type { Game } from './types/game';
+import type { TeamData } from './types/team';
 
 const games = gamesData as Game[];
+const team = teamData as TeamData;
 
 const SECTION_IDS: NavSection[] = ['home', 'games', 'team'];
 
@@ -80,6 +86,25 @@ export default function App() {
           <div className="h-px bg-gradient-to-r from-transparent via-hairline-strong to-transparent" />
         </div>
 
+        {/* Built With section */}
+        <section className="py-20 sm:py-28">
+          <div className="mx-auto max-w-7xl px-6">
+            <SectionHeading
+              eyebrow="Built With"
+              title={<>Modern stack, <span className="text-gradient">crafted with care.</span></>}
+              description="GameHub is built with a tight, modern frontend toolchain. Every animation, transition, and pixel is intentional."
+            />
+            <div className="mt-12">
+              <TechStack />
+            </div>
+          </div>
+        </section>
+
+        {/* Divider */}
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="h-px bg-gradient-to-r from-transparent via-hairline-strong to-transparent" />
+        </div>
+
         <section id="team" className="scroll-mt-20 py-20 sm:py-28">
           <div className="mx-auto max-w-7xl px-6">
             <SectionHeading
@@ -95,22 +120,14 @@ export default function App() {
               <MaintainerCard />
             </div>
 
-            {/* Contributors strip */}
+            {/* Teacher + extra contributor */}
+            <div className="mt-10">
+              <TeacherSpotlight teacher={team.teacher} extras={team.additionalContributors} />
+            </div>
+
+            {/* Contributors wall */}
             <div className="mt-14">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-ink-tertiary mb-4">
-                With games from
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {games.map((g) => (
-                  <span
-                    key={g.id}
-                    className="inline-flex items-center gap-2 rounded-full bg-surface-1 border border-hairline px-3 py-1.5 text-xs text-ink-muted"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-accent/80" />
-                    {g.creator}
-                  </span>
-                ))}
-              </div>
+              <ContributorsWall games={games} />
             </div>
           </div>
         </section>
@@ -124,23 +141,28 @@ export default function App() {
 function Footer() {
   return (
     <footer className="border-t border-hairline mt-10">
-      <div className="mx-auto max-w-7xl px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="text-sm text-ink-subtle">
-          <span className="font-medium text-ink">SoftUni GameHub</span> · Student showcase
-          platform.
+      <div className="mx-auto max-w-7xl px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        <div className="flex items-center gap-3">
+          <div className="relative h-9 w-9 rounded-xl bg-canvas-deep grid place-items-center overflow-hidden ring-1 ring-hairline-strong">
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/30 via-accent-violet/20 to-transparent" />
+            <img src="/logo.svg" alt="GameHub" className="relative h-6 w-6" />
+          </div>
+          <div className="text-sm text-ink-subtle">
+            <span className="font-medium text-ink">SoftUni GameHub</span> · Student showcase platform.
+          </div>
         </div>
         <div className="flex items-center gap-4 text-xs text-ink-tertiary">
           <span className="inline-flex items-center gap-1.5">
             Built with <Heart className="h-3 w-3 text-accent" /> for the SoftUni event
           </span>
           <a
-            href="https://github.com/deo08mine"
+            href="https://github.com/homophobiaa"
             target="_blank"
             rel="noreferrer noopener"
             className="inline-flex items-center gap-1.5 hover:text-ink transition-colors"
           >
             <Github className="h-3.5 w-3.5" />
-            deo08mine
+            homophobiaa
           </a>
         </div>
       </div>

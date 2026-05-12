@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Gamepad2, Github, Menu, X } from 'lucide-react';
+import { Github, Menu, X } from 'lucide-react';
 
 export type NavSection = 'home' | 'games' | 'team';
 
@@ -42,9 +42,13 @@ export default function Navbar({ active, onNavigate }: Props) {
           onClick={() => onNavigate('home')}
           className="flex items-center gap-2.5 group focus:outline-none"
         >
-          <div className="relative h-8 w-8 rounded-lg bg-gradient-to-br from-accent to-accent-violet grid place-items-center shadow-[0_0_20px_-4px_rgba(124,140,255,0.6)]">
-            <Gamepad2 className="h-4 w-4 text-canvas-deep" strokeWidth={2.5} />
-            <div className="absolute inset-0 rounded-lg ring-1 ring-white/10" />
+          <div className="relative h-9 w-9 rounded-xl bg-canvas-deep grid place-items-center overflow-hidden ring-1 ring-hairline-strong shadow-[0_0_24px_-6px_rgba(124,140,255,0.7)] group-hover:shadow-[0_0_28px_-4px_rgba(124,140,255,0.9)] transition-all">
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/30 via-accent-violet/20 to-transparent" />
+            <img
+              src="/logo.svg"
+              alt="GameHub"
+              className="relative h-6 w-6 object-contain drop-shadow-[0_0_6px_rgba(124,140,255,0.7)]"
+            />
           </div>
           <div className="flex flex-col leading-none">
             <span className="text-[15px] font-semibold tracking-tight text-ink">
@@ -83,7 +87,7 @@ export default function Navbar({ active, onNavigate }: Props) {
 
         <div className="hidden md:flex items-center gap-2">
           <a
-            href="https://github.com/deo08mine"
+            href="https://github.com/homophobiaa"
             target="_blank"
             rel="noreferrer noopener"
             className="btn-ghost"

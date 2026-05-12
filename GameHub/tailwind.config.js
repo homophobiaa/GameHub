@@ -60,12 +60,17 @@ export default {
           '0%, 100%': { transform: 'translateY(0px)' },
           '50%': { transform: 'translateY(-10px)' },
         },
+        marquee: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-50%)' },
+        },
       },
       animation: {
         'aurora-slow': 'aurora-slow 18s ease-in-out infinite',
         shimmer: 'shimmer 2.5s linear infinite',
         'pulse-soft': 'pulse-soft 3s ease-in-out infinite',
         float: 'float 6s ease-in-out infinite',
+        marquee: 'marquee 40s linear infinite',
       },
     },
   },

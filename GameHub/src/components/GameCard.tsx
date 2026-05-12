@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { Github, Play, GitBranch, ImageOff } from 'lucide-react';
 import type { Game } from '../types/game';
 
@@ -38,6 +38,14 @@ export default function GameCard({ game, index }: Props) {
   const [imgFailed, setImgFailed] = useState(false);
   const [pos, setPos] = useState({ x: 50, y: 50 });
 
+  // tilt motion values
+  const rx = useMotionValue(0);
+  const ry = useMotionValue(0);
+  const srx = useSpring(rx, { stiffness: 200, damping: 18, mass: 0.4 });
+  const sry = useSpring(ry, { stiffness: 200, damping: 18, mass: 0.4 });
+  const rotateX = useTransform(srx, (v) => `${v}deg`);
+  const rotateY = useTransform(sry, (v) => `${v}deg`);
+
   const hasGithub = game.creatorGithub.trim().length > 0;
   const githubUrl = hasGithub ? `https://github.com/${game.creatorGithub}` : undefined;
 
@@ -45,10 +53,16 @@ export default function GameCard({ game, index }: Props) {
     const el = cardRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setPos({
-      x: ((e.clientX - rect.left) / rect.width) * 100,
-      y: ((e.clientY - rect.top) / rect.height) * 100,
-    });
+    const px = (e.clientX - rect.left) / rect.width;
+    const py = (e.clientY - rect.top) / rect.height;
+    setPos({ x: px * 100, y: py * 100 });
+    // max ~6 deg tilt
+    ry.set((px - 0.5) * 8);
+    rx.set(-(py - 0.5) * 8);
+  };
+  const onLeave = () => {
+    rx.set(0);
+    ry.set(0);
   };
 
   return (
@@ -59,10 +73,24 @@ export default function GameCard({ game, index }: Props) {
       viewport={{ once: true, margin: '-60px' }}
       transition={{ duration: 0.55, delay: Math.min(index * 0.05, 0.4), ease: 'easeOut' }}
       onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      style={{ rotateX, rotateY, transformPerspective: 1000 }}
       className="group relative overflow-hidden rounded-2xl border border-hairline bg-surface-1
-        transition-all duration-300 hover:border-hairline-strong hover:-translate-y-1
-        hover:shadow-[0_24px_60px_-24px_rgba(124,140,255,0.45)]"
+        transition-[border-color,box-shadow,transform] duration-300 hover:border-hairline-strong
+        hover:shadow-[0_24px_60px_-24px_rgba(124,140,255,0.5)] will-change-transform"
     >
+      {/* animated gradient border on hover */}
+      <div className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+        style={{
+          background: `radial-gradient(300px circle at ${pos.x}% ${pos.y}%, rgba(124,140,255,0.45), transparent 60%)`,
+          mask: 'linear-gradient(#000,#000) content-box, linear-gradient(#000,#000)',
+          WebkitMask: 'linear-gradient(#000,#000) content-box, linear-gradient(#000,#000)',
+          WebkitMaskComposite: 'xor',
+          maskComposite: 'exclude',
+          padding: '1px',
+        }}
+      />
+
       {/* cursor spotlight */}
       <div
         className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
@@ -70,6 +98,9 @@ export default function GameCard({ game, index }: Props) {
           background: `radial-gradient(420px circle at ${pos.x}% ${pos.y}%, rgba(124,140,255,0.14), transparent 55%)`,
         }}
       />
+
+      {/* shine sweep */}
+      <div className="pointer-events-none absolute -inset-x-1 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
       {/* Screenshot area */}
       <div className="relative aspect-[16/10] overflow-hidden border-b border-hairline">
@@ -79,13 +110,17 @@ export default function GameCard({ game, index }: Props) {
             alt={`${game.name} screenshot`}
             loading="lazy"
             onError={() => setImgFailed(true)}
-            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.06]"
           />
         ) : (
           <ScreenshotFallback name={game.creator} />
         )}
         {/* gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-surface-1 via-surface-1/10 to-transparent" />
+        {/* diagonal shine sweep */}
+        <div className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-[1100ms] ease-out"
+          style={{ background: 'linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.08) 50%, transparent 70%)' }}
+        />
 
         {/* badges over screenshot */}
         <div className="absolute top-3 left-3 flex items-center gap-2">

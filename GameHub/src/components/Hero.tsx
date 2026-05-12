@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
-import { ArrowRight, Sparkles, Users, Layers } from 'lucide-react';
+import { ArrowRight, Sparkles, Users, Layers, ChevronDown } from 'lucide-react';
 import type { NavSection } from './Navbar';
+import Magnetic from './Magnetic';
 
 type Props = {
   onNavigate: (s: NavSection) => void;
@@ -9,8 +10,16 @@ type Props = {
 
 export default function Hero({ onNavigate, gameCount }: Props) {
   return (
-    <section className="relative pt-32 pb-20 sm:pt-40 sm:pb-28">
-      <div className="mx-auto max-w-7xl px-6">
+    <section className="relative pt-32 pb-24 sm:pt-40 sm:pb-32 overflow-hidden">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-0">
+        <motion.div
+          className="absolute top-24 left-1/2 h-72 w-72 rounded-full blur-3xl"
+          style={{ background: 'radial-gradient(circle, rgba(124,140,255,0.35), transparent 60%)' }}
+          animate={{ x: [-40, 40, -40], y: [-20, 20, -20] }}
+          transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      </div>
+      <div className="relative mx-auto max-w-7xl px-6">
         <div className="grid lg:grid-cols-12 gap-12 items-center">
           {/* Left: copy */}
           <div className="lg:col-span-7">
@@ -20,21 +29,20 @@ export default function Hero({ onNavigate, gameCount }: Props) {
               transition={{ duration: 0.5 }}
               className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface-1/60 backdrop-blur px-3 py-1.5"
             >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-60 animate-ping" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+              </span>
               <Sparkles className="h-3.5 w-3.5 text-accent" />
               <span className="text-xs font-medium tracking-wide text-ink-muted">
                 SoftUni Event 2026 · Student Showcase
               </span>
             </motion.div>
 
-            <motion.h1
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.05, ease: 'easeOut' }}
-              className="heading-display mt-6 text-5xl sm:text-6xl lg:text-7xl text-ink text-balance"
-            >
-              One hub.<br />
-              <span className="text-gradient">Every student game.</span>
-            </motion.h1>
+            <h1 className="heading-display mt-6 text-5xl sm:text-6xl lg:text-7xl text-ink text-balance">
+              <RevealLine delay={0.05}>One hub.</RevealLine>
+              <RevealLine delay={0.2}><span className="text-gradient">Every student game.</span></RevealLine>
+            </h1>
 
             <motion.p
               initial={{ opacity: 0, y: 16 }}
@@ -52,16 +60,15 @@ export default function Hero({ onNavigate, gameCount }: Props) {
               transition={{ duration: 0.6, delay: 0.25 }}
               className="mt-8 flex flex-wrap items-center gap-3"
             >
-              <button
-                onClick={() => onNavigate('games')}
-                className="btn-primary group"
-              >
-                Explore Games
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </button>
-              <button onClick={() => onNavigate('team')} className="btn-secondary">
+              <Magnetic strength={0.25} onClick={() => onNavigate('games')} className="btn-primary group">
+                <span className="relative z-10 inline-flex items-center gap-2">
+                  Explore Games
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </Magnetic>
+              <Magnetic strength={0.2} onClick={() => onNavigate('team')} className="btn-secondary">
                 View Team
-              </button>
+              </Magnetic>
             </motion.div>
 
             {/* Stats */}
@@ -82,8 +89,42 @@ export default function Hero({ onNavigate, gameCount }: Props) {
             <HeroVisual />
           </div>
         </div>
+
+        {/* scroll indicator */}
+        <motion.button
+          onClick={() => onNavigate('games')}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.1, duration: 0.6 }}
+          className="hidden sm:flex absolute left-1/2 -translate-x-1/2 bottom-2 flex-col items-center gap-1.5 text-ink-tertiary hover:text-ink-muted transition-colors"
+          aria-label="Scroll to games"
+        >
+          <span className="text-[10px] uppercase tracking-[0.22em]">Scroll</span>
+          <motion.div
+            animate={{ y: [0, 5, 0] }}
+            transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+            className="h-7 w-7 rounded-full border border-hairline grid place-items-center"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </motion.div>
+        </motion.button>
       </div>
     </section>
+  );
+}
+
+function RevealLine({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+  return (
+    <span className="block overflow-hidden">
+      <motion.span
+        className="block"
+        initial={{ y: '110%', opacity: 0 }}
+        animate={{ y: '0%', opacity: 1 }}
+        transition={{ duration: 0.8, delay, ease: [0.22, 1, 0.36, 1] }}
+      >
+        {children}
+      </motion.span>
+    </span>
   );
 }
 
@@ -116,7 +157,18 @@ function HeroVisual() {
       className="relative h-[460px] hidden lg:block"
     >
       {/* glow */}
-      <div className="absolute inset-0 -m-10 rounded-[2rem] bg-gradient-to-tr from-accent/20 via-accent-violet/10 to-transparent blur-3xl" />
+      <div className="absolute inset-0 -m-10 rounded-[2rem] bg-gradient-to-tr from-accent/25 via-accent-violet/15 to-transparent blur-3xl" />
+
+      {/* floating logo badge */}
+      <motion.div
+        aria-hidden
+        className="absolute -top-6 -left-6 h-20 w-20 rounded-2xl bg-canvas-deep border border-hairline-strong grid place-items-center overflow-hidden z-20 shadow-2xl"
+        animate={{ y: [0, -8, 0], rotate: [0, 2, 0] }}
+        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-accent/30 via-accent-violet/20 to-transparent" />
+        <img src="/logo.svg" alt="" className="relative h-10 w-10 drop-shadow-[0_0_12px_rgba(124,140,255,0.9)]" />
+      </motion.div>
 
       {/* Main panel: a mock launcher */}
       <motion.div
@@ -176,6 +228,25 @@ function HeroVisual() {
           />
         </div>
       </motion.div>
+
+      {/* floating profile chip */}
+      <motion.a
+        href="https://github.com/homophobiaa"
+        target="_blank"
+        rel="noreferrer noopener"
+        animate={{ y: [0, -10, 0] }}
+        transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
+        className="absolute -left-10 top-44 w-56 glass-panel p-3 shadow-2xl flex items-center gap-3 hover:border-hairline-strong transition-colors z-20"
+      >
+        <div className="relative">
+          <img src="/pfp.png" alt="Deyan" className="h-10 w-10 rounded-full object-cover ring-2 ring-accent/40" />
+          <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-canvas-deep animate-pulse-soft" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">Project Lead</div>
+          <div className="text-sm font-semibold text-ink truncate">@homophobiaa</div>
+        </div>
+      </motion.a>
 
       {/* floating side card */}
       <motion.div
