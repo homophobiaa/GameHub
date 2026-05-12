@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIMON</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --bg: #0a0a0f;
+            --panel: #111118;
+            --border: #2a2a3a;
+            --green: #00ff88;
+            --red: #ff2244;
+            --yellow: #ffdd00;
+            --blue: #00aaff;
+            --green-dim: #003320;
+            --red-dim: #330010;
+            --yellow-dim: #332b00;
+            --blue-dim: #001a33;
+            --green-glow: rgba(0, 255, 136, 0.4);
+            --red-glow: rgba(255, 34, 68, 0.4);
+            --yellow-glow: rgba(255, 221, 0, 0.4);
+            --blue-glow: rgba(0, 170, 255, 0.4);
+            --text: #e0e0f0;
+            --text-dim: #555566;
+            --accent: #ff2244;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Share Tech Mono', monospace;
+            color: var(--text);
+            overflow: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0, 170, 255, 0.06) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255, 34, 68, 0.05) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.08) 2px, rgba(0, 0, 0, 0.08) 4px);
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* ── OVERLAYS ── */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.88);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 300;
+            backdrop-filter: blur(4px);
+            transition: opacity 0.2s;
+        }
+
+        .overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .modal {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 36px 40px;
+            min-width: 320px;
+            max-width: 420px;
+            width: 90vw;
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .modal-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: var(--text);
+        }
+
+        .modal-title span {
+            color: var(--accent);
+        }
+
+        .modal-sub {
+            font-size: 0.63rem;
+            letter-spacing: 0.15em;
+            color: var(--text-dim);
+            margin-top: -10px;
+        }
+
+        .modal-sep {
+            height: 1px;
+            background: var(--border);
+        }
+
+        .name-input-wrap {
+            display: flex;
+            gap: 8px;
+        }
+
+        .name-input {
+            flex: 1;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.85rem;
+            letter-spacing: 0.1em;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            color: var(--text);
+            padding: 10px 14px;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .name-input:focus {
+            border-color: var(--green);
+            box-shadow: 0 0 8px rgba(0, 255, 136, 0.15);
+        }
+
+        .name-input::placeholder {
+            color: var(--text-dim);
+        }
+
+        .profile-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .profile-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .profile-list::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+
+        .profile-list::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        .profile-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 14px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            cursor: pointer;
+            transition: border-color 0.12s, background 0.12s;
+        }
+
+        .profile-item:hover {
+            border-color: var(--blue);
+            background: rgba(0, 170, 255, 0.04);
+        }
+
+        .profile-item.sel {
+            border-color: var(--green);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .profile-name {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.13em;
+            color: var(--text);
+            text-transform: uppercase;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .profile-score {
+            font-size: 0.65rem;
+            color: var(--yellow);
+            letter-spacing: 0.1em;
+            white-space: nowrap;
+        }
+
+        .profile-del {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            padding: 2px 4px;
+            border-radius: 2px;
+            transition: color 0.1s;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .profile-del:hover {
+            color: var(--red);
+        }
+
+        .no-profiles {
+            font-size: 0.63rem;
+            color: var(--text-dim);
+            letter-spacing: 0.15em;
+            text-align: center;
+            padding: 14px 0;
+        }
+
+        /* Leaderboard */
+        .lb-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: 260px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .lb-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .lb-list::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+
+        .lb-list::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        .lb-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+        }
+
+        .lb-row.lb-me {
+            border-color: var(--green);
+            background: rgba(0, 255, 136, 0.04);
+        }
+
+        .lb-row.lb-top {
+            border-color: var(--yellow);
+            background: rgba(255, 221, 0, 0.05);
+        }
+
+        .lb-rank {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.62rem;
+            font-weight: 700;
+            color: var(--text-dim);
+            min-width: 24px;
+            text-align: right;
+        }
+
+        .lb-rank.gold {
+            color: var(--yellow);
+            text-shadow: 0 0 8px var(--yellow-glow);
+        }
+
+        .lb-rank.silver {
+            color: #aab;
+        }
+
+        .lb-rank.bronze {
+            color: #c96;
+        }
+
+        .lb-name {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            color: var(--text);
+            text-transform: uppercase;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .lb-score {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--green);
+            text-shadow: 0 0 6px var(--green-glow);
+        }
+
+        .lb-empty {
+            font-size: 0.63rem;
+            color: var(--text-dim);
+            letter-spacing: 0.15em;
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        /* Buttons */
+        .btn-ctrl {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            padding: 10px 20px;
+            border: 1px solid var(--border);
+            background: var(--panel);
+            color: var(--text-dim);
+            cursor: pointer;
+            border-radius: 2px;
+            transition: all 0.15s;
+        }
+
+        .btn-ctrl:hover {
+            color: var(--text);
+            border-color: var(--text-dim);
+        }
+
+        .btn-ctrl.primary {
+            border-color: var(--green);
+            color: var(--green);
+            text-shadow: 0 0 8px var(--green-glow);
+            box-shadow: 0 0 12px rgba(0, 255, 136, 0.1);
+        }
+
+        .btn-ctrl.primary:hover {
+            background: var(--green);
+            color: var(--bg);
+            text-shadow: none;
+            box-shadow: 0 0 24px var(--green-glow);
+        }
+
+        .btn-ctrl.danger {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        .btn-ctrl.danger:hover {
+            background: var(--red);
+            color: var(--bg);
+        }
+
+        .btn-ctrl:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .btn-ctrl:disabled:hover {
+            color: var(--text-dim);
+            border-color: var(--border);
+            background: var(--panel);
+            box-shadow: none;
+            text-shadow: none;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            margin-top: 2px;
+        }
+
+        /* ── GAME ── */
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 22px;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+        }
+
+        .logo {
+            font-family: 'Orbitron', monospace;
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            font-weight: 900;
+            letter-spacing: 0.3em;
+            color: var(--text);
+            text-shadow: 0 0 20px rgba(0, 170, 255, 0.5), 0 0 60px rgba(0, 170, 255, 0.2);
+        }
+
+        .logo span {
+            color: var(--accent);
+            text-shadow: 0 0 20px var(--red-glow), 0 0 60px rgba(255, 34, 68, 0.2);
+        }
+
+        .tagline {
+            font-size: 0.7rem;
+            letter-spacing: 0.4em;
+            color: var(--text-dim);
+            margin-top: 4px;
+            text-transform: uppercase;
+        }
+
+        .player-badge {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 16px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+            user-select: none;
+        }
+
+        .player-badge:hover {
+            border-color: var(--blue);
+        }
+
+        .badge-label {
+            font-size: 0.55rem;
+            letter-spacing: 0.3em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .badge-name {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            color: var(--green);
+            text-transform: uppercase;
+            text-shadow: 0 0 8px var(--green-glow);
+        }
+
+        .badge-chevron {
+            color: var(--text-dim);
+            font-size: 0.55rem;
+            margin-left: 2px;
+        }
+
+        .scoreboard {
+            display: flex;
+            gap: 28px;
+            align-items: center;
+        }
+
+        .score-block {
+            text-align: center;
+        }
+
+        .score-label {
+            font-size: 0.6rem;
+            letter-spacing: 0.3em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .score-value {
+            font-family: 'Orbitron', monospace;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1;
+            margin-top: 2px;
+            transition: all 0.2s;
+        }
+
+        .score-value.bump {
+            color: var(--yellow);
+            text-shadow: 0 0 12px var(--yellow-glow);
+            transform: scale(1.2);
+        }
+
+        .sep {
+            width: 1px;
+            height: 36px;
+            background: var(--border);
+        }
+
+        .strict-badge {
+            font-size: 0.55rem;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            padding: 3px 10px;
+            border-radius: 2px;
+            text-shadow: 0 0 6px var(--red-glow);
+            box-shadow: 0 0 8px rgba(255, 34, 68, 0.1);
+        }
+
+        .board {
+            width: clamp(260px, 50vw, 340px);
+            height: clamp(260px, 50vw, 340px);
+            border-radius: 50%;
+            position: relative;
+            background: var(--panel);
+            border: 2px solid var(--border);
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .btn {
+            position: absolute;
+            width: calc(50% - 6px);
+            height: calc(50% - 6px);
+            cursor: pointer;
+            transition: filter 0.08s;
+            border: none;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .btn-green {
+            top: 3px;
+            left: 3px;
+            border-radius: 100% 0 0 0;
+            background: var(--green-dim);
+            border-right: 2px solid var(--bg);
+            border-bottom: 2px solid var(--bg);
+            clip-path: circle(70.7% at 100% 100%);
+        }
+
+        .btn-red {
+            top: 3px;
+            right: 3px;
+            border-radius: 0 100% 0 0;
+            background: var(--red-dim);
+            border-left: 2px solid var(--bg);
+            border-bottom: 2px solid var(--bg);
+            clip-path: circle(70.7% at 0% 100%);
+        }
+
+        .btn-blue {
+            bottom: 3px;
+            left: 3px;
+            border-radius: 0 0 0 100%;
+            background: var(--blue-dim);
+            border-right: 2px solid var(--bg);
+            border-top: 2px solid var(--bg);
+            clip-path: circle(70.7% at 100% 0%);
+        }
+
+        .btn-yellow {
+            bottom: 3px;
+            right: 3px;
+            border-radius: 0 0 100% 0;
+            background: var(--yellow-dim);
+            border-left: 2px solid var(--bg);
+            border-top: 2px solid var(--bg);
+            clip-path: circle(70.7% at 0% 0%);
+        }
+
+        .btn-green:hover {
+            filter: brightness(1.5);
+        }
+
+        .btn-red:hover {
+            filter: brightness(1.5);
+        }
+
+        .btn-blue:hover {
+            filter: brightness(1.5);
+        }
+
+        .btn-yellow:hover {
+            filter: brightness(1.5);
+        }
+
+        .btn-green.active {
+            background: var(--green);
+            filter: drop-shadow(0 0 20px var(--green-glow)) drop-shadow(0 0 40px var(--green-glow));
+        }
+
+        .btn-red.active {
+            background: var(--red);
+            filter: drop-shadow(0 0 20px var(--red-glow)) drop-shadow(0 0 40px var(--red-glow));
+        }
+
+        .btn-blue.active {
+            background: var(--blue);
+            filter: drop-shadow(0 0 20px var(--blue-glow)) drop-shadow(0 0 40px var(--blue-glow));
+        }
+
+        .btn-yellow.active {
+            background: var(--yellow);
+            filter: drop-shadow(0 0 20px var(--yellow-glow)) drop-shadow(0 0 40px var(--yellow-glow));
+        }
+
+        .center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 28%;
+            height: 28%;
+            border-radius: 50%;
+            background: var(--bg);
+            border: 2px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            gap: 2px;
+        }
+
+        .center-round {
+            font-family: 'Orbitron', monospace;
+            font-size: clamp(0.9rem, 2vw, 1.2rem);
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1;
+        }
+
+        .center-label {
+            font-size: 0.45rem;
+            letter-spacing: 0.2em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .status {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.75rem;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            height: 20px;
+            transition: color 0.3s;
+            text-align: center;
+        }
+
+        .status.watching {
+            color: var(--blue);
+            text-shadow: 0 0 8px var(--blue-glow);
+        }
+
+        .status.your-turn {
+            color: var(--green);
+            text-shadow: 0 0 8px var(--green-glow);
+        }
+
+        .status.fail {
+            color: var(--red);
+            text-shadow: 0 0 8px var(--red-glow);
+            animation: flicker 0.1s steps(1) 4;
+        }
+
+        .status.win {
+            color: var(--yellow);
+            text-shadow: 0 0 8px var(--yellow-glow);
+        }
+
+        @keyframes flicker {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: 0
+            }
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .speed-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .speed-label {
+            font-size: 0.6rem;
+            letter-spacing: 0.3em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .speed-btn {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.65rem;
+            padding: 4px 10px;
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            cursor: pointer;
+            border-radius: 2px;
+            transition: all 0.12s;
+            letter-spacing: 0.1em;
+        }
+
+        .speed-btn.active,
+        .speed-btn:hover {
+            border-color: var(--yellow);
+            color: var(--yellow);
+        }
+
+        .flash {
+            position: fixed;
+            inset: 0;
+            background: var(--red);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 200;
+            transition: opacity 0.05s;
+        }
+
+        .flash.show {
+            opacity: 0.12;
+        }
+
+        @keyframes toastAnim {
+            0% {
+                opacity: 0;
+                transform: translateX(-50%) scale(0.85)
+            }
+
+            20% {
+                opacity: 1;
+                transform: translateX(-50%) scale(1.05)
+            }
+
+            70% {
+                opacity: 1;
+                transform: translateX(-50%) scale(1)
+            }
+
+            100% {
+                opacity: 0;
+                transform: translateX(-50%) scale(1)
+            }
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Orbitron', monospace;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            padding: 10px 24px;
+            background: var(--panel);
+            border: 1px solid var(--yellow);
+            color: var(--yellow);
+            text-shadow: 0 0 10px var(--yellow-glow);
+            box-shadow: 0 0 24px rgba(255, 221, 0, 0.2);
+            border-radius: 2px;
+            z-index: 400;
+            pointer-events: none;
+            opacity: 0;
+        }
+
+        .toast.show {
+            animation: toastAnim 2.2s ease forwards;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="flash" id="flash"></div>
+    <div class="toast" id="toast">NEW BEST!</div>
+
+    <!-- ── PROFILE MODAL ── -->
+    <div class="overlay" id="profileOverlay">
+        <div class="modal">
+            <div class="modal-title">SIM<span>ON</span> — Players</div>
+            <div class="modal-sub">create or select a profile to play</div>
+
+            <div class="name-input-wrap">
+                <input class="name-input" id="nameInput" type="text" maxlength="16" placeholder="enter name..."
+                    autocomplete="off" spellcheck="false" />
+                <button class="btn-ctrl primary" onclick="createProfile()">ADD</button>
+            </div>
+
+            <div class="modal-sep"></div>
+            <div class="profile-list" id="profileList"></div>
+
+            <div class="modal-footer">
+                <button class="btn-ctrl" onclick="openLeaderboard()">LEADERBOARD</button>
+                <button class="btn-ctrl primary" id="playBtn" onclick="closeProfileModal()" disabled>PLAY ▶</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── LEADERBOARD MODAL ── -->
+    <div class="overlay hidden" id="lbOverlay">
+        <div class="modal">
+            <div class="modal-title">LEADER<span>BOARD</span></div>
+            <div class="modal-sub">session high scores — all profiles</div>
+            <div class="lb-list" id="lbList"></div>
+            <div class="modal-footer">
+                <button class="btn-ctrl danger" onclick="clearAll()">CLEAR ALL</button>
+                <button class="btn-ctrl primary" onclick="closeLb()">BACK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── GAME ── -->
+    <div class="container">
+        <div class="header">
+            <div class="logo">SIM<span>ON</span></div>
+        </div>
+
+        <div class="player-badge" onclick="openProfileModal()" title="Switch player">
+            <div>
+                <div class="badge-label">Playing as</div>
+                <div class="badge-name" id="badgeName">—</div>
+            </div>
+            <div class="badge-chevron">▼</div>
+        </div>
+
+        <div class="scoreboard">
+            <div class="score-block">
+                <div class="score-label">Round</div>
+                <div class="score-value" id="round">0</div>
+            </div>
+            <div class="sep"></div>
+            <div class="score-block">
+                <div class="score-label">Best</div>
+                <div class="score-value" id="best">0</div>
+            </div>
+        </div>
+
+        <div class="board">
+            <button class="btn btn-green" id="green"></button>
+            <button class="btn btn-red" id="red"></button>
+            <button class="btn btn-blue" id="blue"></button>
+            <button class="btn btn-yellow" id="yellow"></button>
+            <div class="center">
+                <div class="center-round" id="center-round">—</div>
+                <div class="center-label">level</div>
+            </div>
+        </div>
+
+        <div class="status" id="status">select a profile to play</div>
+
+        <div class="controls">
+            <button class="btn-ctrl primary" id="start-btn" onclick="startGame()" disabled>START</button>
+            <button class="btn-ctrl" onclick="openLeaderboard()">LEADERBOARD</button>
+        </div>
+
+        <div class="speed-row">
+            <span class="speed-label">Speed</span>
+            <button class="speed-btn active" onclick="setSpeed(this,600)">NORMAL</button>
+            <button class="speed-btn" onclick="setSpeed(this,350)">FAST</button>
+            <button class="speed-btn" onclick="setSpeed(this,180)">LUDICROUS</button>
+        </div>
+    </div>
+
+    <script>
+        // ═══════════════ STORAGE ═══════════════
+        const SK = 'simon_v2';
+        const load = () => { try { return JSON.parse(sessionStorage.getItem(SK)) || {}; } catch { return {}; } };
+        const store = p => sessionStorage.setItem(SK, JSON.stringify(p));
+
+        // ═══════════════ STATE ═══════════════
+        let profile = null;
+        let sequence = [], playerIdx = 0, round = 0;
+        let playerTurn = false, busy = false, speed = 600;
+        const COLORS = ['green', 'red', 'blue', 'yellow'];
+        const TONES = { green: 415, red: 310, yellow: 252, blue: 209 };
+
+        // ═══════════════ AUDIO ═══════════════
+        let _ctx;
+        const ac = () => { if (!_ctx) _ctx = new (window.AudioContext || window.webkitAudioContext)(); return _ctx; };
+        function tone(freq, ms = 300, type = 'sine') {
+            try {
+                const c = ac(), o = c.createOscillator(), g = c.createGain();
+                o.connect(g); g.connect(c.destination);
+                o.frequency.value = freq; o.type = type;
+                g.gain.setValueAtTime(0.35, c.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + ms / 1000);
+                o.start(c.currentTime); o.stop(c.currentTime + ms / 1000);
+            } catch (e) { }
+        }
+        function winSound() { [252, 310, 415, 523, 415, 523, 659].forEach((n, i) => setTimeout(() => tone(n, 200), i * 180)); }
+
+        // ═══════════════ UTILS ═══════════════
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const $ = id => document.getElementById(id);
+
+        // ═══════════════ PROFILE MODAL ═══════════════
+        function openProfileModal() {
+            renderProfiles();
+            $('profileOverlay').classList.remove('hidden');
+        }
+        function closeProfileModal() {
+            if (!profile) return;
+            $('profileOverlay').classList.add('hidden');
+        }
+
+        function renderProfiles() {
+            const profiles = load();
+            const list = $('profileList');
+            list.innerHTML = '';
+
+            const keys = Object.keys(profiles);
+            if (!keys.length) {
+                list.innerHTML = '<div class="no-profiles">no profiles yet — type a name above</div>';
+                $('playBtn').disabled = !profile;
+                return;
+            }
+
+            keys.forEach(name => {
+                const div = document.createElement('div');
+                div.className = 'profile-item' + (name === profile ? ' sel' : '');
+                div.innerHTML =
+                    `<div class="profile-name">${esc(name)}</div>` +
+                    `<div class="profile-score">BEST&nbsp;${profiles[name].best}</div>` +
+                    `<button class="profile-del" data-name="${esc(name)}" title="Delete">✕</button>`;
+                div.addEventListener('click', e => {
+                    if (e.target.classList.contains('profile-del')) { delProfile(e.target.dataset.name); return; }
+                    pickProfile(name);
+                });
+                list.appendChild(div);
+            });
+
+            $('playBtn').disabled = !profile;
+        }
+
+        function createProfile() {
+            const inp = $('nameInput');
+            const raw = inp.value.trim().replace(/[^a-zA-Z0-9 \-_]/g, '').slice(0, 16).trim();
+            if (!raw) return;
+            const profiles = load();
+            const existing = Object.keys(profiles).find(k => k.toLowerCase() === raw.toLowerCase());
+            if (existing) { pickProfile(existing); inp.value = ''; return; }
+            profiles[raw] = { best: 0 };
+            store(profiles);
+            pickProfile(raw);
+            inp.value = '';
+        }
+
+        function pickProfile(name) {
+            profile = name;
+            const profiles = load();
+            $('badgeName').textContent = name.toUpperCase();
+            $('best').textContent = profiles[name]?.best || 0;
+            $('start-btn').disabled = false;
+            $('playBtn').disabled = false;
+            setStatus('ready — press start', '');
+            renderProfiles();
+        }
+
+        function delProfile(name) {
+            const profiles = load();
+            delete profiles[name];
+            store(profiles);
+            if (profile === name) {
+                profile = null;
+                $('badgeName').textContent = '—';
+                $('best').textContent = '0';
+                $('start-btn').disabled = true;
+                setStatus('select a profile to play', '');
+            }
+            renderProfiles();
+        }
+
+        $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') createProfile(); });
+
+        // ═══════════════ LEADERBOARD ═══════════════
+        function openLeaderboard() {
+            $('profileOverlay').classList.add('hidden');
+            renderLb();
+            $('lbOverlay').classList.remove('hidden');
+        }
+        function closeLb() {
+            $('lbOverlay').classList.add('hidden');
+            if (!profile) openProfileModal();
+        }
+
+        function renderLb() {
+            const profiles = load();
+            const lb = $('lbList');
+            lb.innerHTML = '';
+
+            const sorted = Object.entries(profiles)
+                .map(([n, d]) => ({ n, b: d.best }))
+                .filter(x => x.b > 0)
+                .sort((a, b) => b.b - a.b);
+
+            if (!sorted.length) { lb.innerHTML = '<div class="lb-empty">no scores recorded yet</div>'; return; }
+
+            const rankCls = ['gold', 'silver', 'bronze'];
+            const rankLbl = ['#1', '#2', '#3'];
+            sorted.forEach(({ n, b }, i) => {
+                const row = document.createElement('div');
+                row.className = 'lb-row' + (i === 0 ? ' lb-top' : '') + (n === profile ? ' lb-me' : '');
+                row.innerHTML =
+                    `<div class="lb-rank ${i < 3 ? rankCls[i] : ''}">${i < 3 ? rankLbl[i] : '#' + (i + 1)}</div>` +
+                    `<div class="lb-name">${esc(n)}${n === profile ? ' ◀' : ''}</div>` +
+                    `<div class="lb-score">${b}</div>`;
+                lb.appendChild(row);
+            });
+        }
+
+        function clearAll() {
+            if (!confirm('Delete all profiles and scores?')) return;
+            sessionStorage.removeItem(SK);
+            profile = null;
+            $('badgeName').textContent = '—';
+            $('best').textContent = '0';
+            $('start-btn').disabled = true;
+            setStatus('select a profile to play', '');
+            closeLb();
+            openProfileModal();
+        }
+
+        // ═══════════════ GAME ═══════════════
+        function setStatus(msg, cls = '') { const s = $('status'); s.textContent = msg; s.className = 'status ' + cls; }
+
+        function updateRound(n) {
+            round = n; $('round').textContent = n; $('center-round').textContent = n || '—';
+            $('round').classList.add('bump');
+            setTimeout(() => $('round').classList.remove('bump'), 250);
+        }
+
+        function flashBtn(color, dur) {
+            return new Promise(res => {
+                const el = $(color);
+                el.classList.add('active');
+                tone(TONES[color], dur * 0.85);
+                setTimeout(() => { el.classList.remove('active'); setTimeout(res, dur * 0.25); }, dur * 0.75);
+            });
+        }
+
+        async function playSequence() {
+            playerTurn = false; busy = true;
+            setStatus('watch carefully...', 'watching');
+            setBtns(false);
+            await sleep(500);
+            for (const c of sequence) await flashBtn(c, speed);
+            playerIdx = 0; playerTurn = true; busy = false;
+            setStatus('your turn!', 'your-turn');
+            setBtns(true);
+        }
+
+        function startGame() {
+            if (!profile) return;
+            sequence = []; playerIdx = 0; playerTurn = false;
+            updateRound(0);
+            $('start-btn').textContent = 'RESTART';
+            setStatus('get ready...', '');
+            setTimeout(nextRound, 600);
+        }
+
+        function nextRound() {
+            playerIdx = 0;
+            sequence.push(COLORS[Math.floor(Math.random() * 4)]);
+            updateRound(sequence.length);
+
+            // Persist best immediately
+            const profiles = load();
+            if (profile && profiles[profile] && sequence.length > profiles[profile].best) {
+                profiles[profile].best = sequence.length;
+                store(profiles);
+                $('best').textContent = sequence.length;
+                //showToast('NEW BEST!');
+            }
+            playSequence();
+        }
+
+        function handlePress(color) {
+            if (!playerTurn || busy || !profile) return;
+            ac(); // unlock audio
+            flashBtn(color, 200);
+
+            if (color !== sequence[playerIdx]) {
+                // Wrong — strict: always restart from round 1
+                playerTurn = false;
+                $('flash').classList.add('show');
+                setTimeout(() => $('flash').classList.remove('show'), 200);
+                tone(130, 600, 'sawtooth');
+                setStatus('wrong! restarting...', 'fail');
+                setBtns(false);
+                setTimeout(() => startGame(), 1400);
+                return;
+            }
+
+            playerIdx++;
+            if (playerIdx === sequence.length) {
+                playerTurn = false; setBtns(false);
+                if (sequence.length === 2000000000) { setStatus('you win!! incredible!', 'win'); winSound(); return; }
+                setStatus('nice!', 'win');
+                setTimeout(nextRound, 1000);
+            }
+        }
+
+        function setBtns(on) {
+            COLORS.forEach(c => { const e = $(c); e.disabled = !on; e.style.cursor = on ? 'pointer' : 'default'; });
+        }
+
+        function setSpeed(btn, val) {
+            speed = val;
+            document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        function showToast(msg) {
+            const t = $('toast'); t.textContent = msg;
+            t.classList.remove('show'); void t.offsetWidth; t.classList.add('show');
+        }
+
+        // ═══════════════ EVENTS ═══════════════
+        COLORS.forEach(c => {
+            const el = $(c);
+            el.addEventListener('mousedown', () => handlePress(c));
+            el.addEventListener('touchstart', e => { e.preventDefault(); handlePress(c); }, { passive: false });
+        });
+
+        document.addEventListener('keydown', e => {
+            const map = { w: 'green', e: 'red', s: 'blue', d: 'yellow' };
+            if (e.key === ' ') { e.preventDefault(); if (!$('start-btn').disabled) startGame(); return; }
+            if (map[e.key.toLowerCase()]) handlePress(map[e.key.toLowerCase()]);
+        });
+
+        // ═══════════════ INIT ═══════════════
+        setBtns(false);
+        openProfileModal();
+    </script>
+</body>
+
+</html>
