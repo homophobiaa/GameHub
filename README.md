@@ -33,8 +33,11 @@ Each game is developed independently by different students and integrated into t
 
 > Main landing page / launcher screenshot
 
-![Hub Screenshot](./screenshots/hub-main.png)
-
+<p align="center">
+  <img src="./docs/screenshots/landing.png" width="49%" />
+  <img src="./docs/screenshots/credits.png" width="49%" />
+  <img src="./docs/screenshots/games.png" width="70%" />
+</p>
 ---
 
 # Games
