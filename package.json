@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix GameHub\"",
+    "build": "concurrently \"npm run build --prefix GameHub\""
+  },
+  "dependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
