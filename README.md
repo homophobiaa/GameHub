@@ -3,6 +3,7 @@
 ![React](https://img.shields.io/badge/react-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/typescript-3178C6?logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/vite-646CFF?logo=vite&logoColor=white)
+![Frontend Check](https://github.com/homophobiaa/GameHub/actions/workflows/node.js.yml/badge.svg)
 
 A community-driven game showcase platform created for a SoftUni school event.
 
