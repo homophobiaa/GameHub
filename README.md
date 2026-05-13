@@ -35,9 +35,9 @@ Each game is developed independently by different students and integrated into t
 > Main landing page / launcher screenshot
 
 <p align="center">
-  <img src="./docs/screenshots/landing.png" width="49%" />
-  <img src="./docs/screenshots/credits.png" width="49%" />
-  <img src="./docs/screenshots/games.png" width="70%" />
+  <img src="./Docs/Screenshots/landing.png" width="49%" />
+  <img src="./Docs/Screenshots/credits.png" width="49%" />
+  <img src="./Docs/Screenshots/games.png" width="70%" />
 </p>
 ---
 
