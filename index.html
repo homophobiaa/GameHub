@@ -9,138 +9,273 @@
 <body>
   <div class="background-glow glow-left"></div>
   <div class="background-glow glow-right"></div>
+  <div class="arena-wave" aria-hidden="true"></div>
+  <div class="arena-particles" aria-hidden="true"></div>
 
   <main class="app-shell">
     <section id="start-screen" class="screen is-active">
-      <div class="panel hero-panel">
-        <p class="eyebrow">60-Second Typing Challenge</p>
-        <h1>Speed Typing Arena</h1>
-        <p class="hero-copy">
-          Enter the arena, choose your challenge level, and finish the target text before the 60-second limit runs out.
-        </p>
-
-        <div class="info-grid">
-          <article class="mini-card">
-            <span class="mini-card-label">Goal</span>
-            <strong>Type fast, stay accurate, and keep the streak alive.</strong>
-          </article>
-          <article class="mini-card">
-            <span class="mini-card-label">Round</span>
-            <strong>Each match ends when you finish the text or the 60 seconds expire.</strong>
-          </article>
-          <article class="mini-card">
-            <span class="mini-card-label">Scoring</span>
-            <strong>WPM, accuracy, streaks, and mistakes decide your score.</strong>
-          </article>
+      <div class="panel hero-panel start-panel">
+        <div class="start-panel-header">
+          <span class="challenge-badge">60-Second Typing Challenge</span>
+          <button id="sound-toggle-btn" class="sound-toggle" type="button" aria-pressed="true">Sound: On</button>
         </div>
 
-        <form id="start-form" class="player-form" novalidate>
-          <label for="player-name">Player Name</label>
-          <input
-            id="player-name"
-            name="player-name"
-            type="text"
-            maxlength="20"
-            placeholder="Enter your arena name"
-            autocomplete="off"
-            spellcheck="false"
-          >
-          <fieldset class="difficulty-fieldset">
-            <legend>Choose Difficulty</legend>
-            <div class="difficulty-grid">
-              <label class="difficulty-option">
-                <input type="radio" name="difficulty" value="easy">
-                <span class="difficulty-card">
-                  <strong>Easy</strong>
-                  <small>Short and simple words or sentences.</small>
-                </span>
-              </label>
-              <label class="difficulty-option">
-                <input type="radio" name="difficulty" value="normal">
-                <span class="difficulty-card">
-                  <strong>Normal</strong>
-                  <small>Medium-length sentences with balanced pace.</small>
-                </span>
-              </label>
-              <label class="difficulty-option">
-                <input type="radio" name="difficulty" value="hard">
-                <span class="difficulty-card">
-                  <strong>Hard</strong>
-                  <small>Longer text with punctuation, numbers, and code-like lines.</small>
-                </span>
-              </label>
+        <div class="start-grid">                             
+          <div class="start-hero-column">
+            <p class="eyebrow">Arcade Typing Showdown</p>
+            <h1>Speed Typing Arena</h1>
+            <p class="hero-copy hero-subtitle">
+              Enter the neon arena, choose your difficulty, build combos, and race the clock with sharp, accurate typing.
+            </p>
+            <div class="typing-marquee" aria-hidden="true">
+              <span>Type fast. Build combos. Beat the leaderboard.</span>
             </div>
-          </fieldset>
-          <p id="start-error" class="form-error" aria-live="polite"></p>
 
-          <div class="button-row">
-            <button type="submit" class="btn btn-primary">Start Game</button>
-            <button type="button" id="start-leaderboard-btn" class="btn btn-secondary">View Leaderboard</button>
+            <div class="feature-grid">
+              <article class="feature-card">
+                <span class="feature-icon">⚡</span>
+                <div>
+                  <span class="mini-card-label">Feature</span>
+                  <strong>Combo System</strong>
+                </div>
+              </article>
+              <article class="feature-card">
+                <span class="feature-icon">🏆</span>
+                <div>
+                  <span class="mini-card-label">Feature</span>
+                  <strong>Separate Leaderboards</strong>
+                </div>
+              </article>
+              <article class="feature-card">
+                <span class="feature-icon">🎵</span>
+                <div>
+                  <span class="mini-card-label">Feature</span>
+                  <strong>Sound Effects</strong>
+                </div>
+              </article>
+              <article class="feature-card">
+                <span class="feature-icon">🔥</span>
+                <div>
+                  <span class="mini-card-label">Feature</span>
+                  <strong>Dynamic Background</strong>
+                </div>
+              </article>
+            </div>
           </div>
-          <p class="leaderboard-hint">Open the leaderboard to see the top scores for Easy, Normal, and Hard.</p>
-        </form>
+
+          <div class="start-side-column">
+            <form id="start-form" class="player-form start-form-card" novalidate>
+              <label for="player-name">Player Name</label>
+              <input
+                id="player-name"
+                name="player-name"
+                type="text"
+                maxlength="20"
+                placeholder="Enter your player name..."
+                autocomplete="off"
+                spellcheck="false"
+              >
+
+              <fieldset class="difficulty-fieldset">
+                <legend>Select Arena Difficulty</legend>
+                <div class="difficulty-grid">
+                  <label class="difficulty-option">
+                    <input type="radio" name="difficulty" value="easy">
+                    <span class="difficulty-card">
+                      <span class="difficulty-icon">⚡</span>
+                      <span class="difficulty-copy">
+                        <strong>Easy</strong>
+                        <small>Short words and simple lines for a smooth warm-up run.</small>
+                      </span>
+                    </span>
+                  </label>
+                  <label class="difficulty-option">
+                    <input type="radio" name="difficulty" value="normal">
+                    <span class="difficulty-card">
+                      <span class="difficulty-icon">🎯</span>
+                      <span class="difficulty-copy">
+                        <strong>Normal</strong>
+                        <small>Balanced sentences built for rhythm, speed, and clean accuracy.</small>
+                      </span>
+                    </span>
+                  </label>
+                  <label class="difficulty-option">
+                    <input type="radio" name="difficulty" value="hard">
+                    <span class="difficulty-card">
+                      <span class="difficulty-icon">🔥</span>
+                      <span class="difficulty-copy">
+                        <strong>Hard</strong>
+                        <small>Longer text with punctuation, numbers, and code-like chaos.</small>
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <p id="start-error" class="form-error" aria-live="polite"></p>
+
+              <div class="button-row start-actions">
+                <button id="start-game-btn" type="submit" class="btn btn-primary btn-start" disabled>Start Game</button>
+                <button type="button" id="start-leaderboard-btn" class="btn btn-secondary">View Leaderboard</button>
+              </div>
+              <p class="form-helper">Your score will be saved to the selected difficulty leaderboard.</p>
+            </form>
+
+            <aside class="preview-card">
+              <div class="preview-header">
+                <div>
+                  <span class="mini-card-label">Live Preview</span>
+                  <h3>Top 3 Scores</h3>
+                </div>
+                <span id="preview-difficulty-badge" class="preview-difficulty-badge">Normal</span>
+              </div>
+              <ol id="start-preview-list" class="preview-list"></ol>
+              <p id="start-preview-empty" class="preview-empty">No scores yet. Be the first.</p>
+              <p class="leaderboard-hint">Open the full leaderboard to compare Easy, Normal, and Hard runs.</p>
+            </aside>
+          </div>
+        </div>
       </div>
     </section>
 
     <section id="game-screen" class="screen">
-      <div class="panel game-panel">
-        <div class="panel-top">
-          <div>
-            <p class="eyebrow">Live Match</p>
-            <h2>Keep Typing</h2>
-            <div class="status-row">
+      <div id="game-panel" class="panel game-panel">
+        <div class="panel-top game-header premium-game-header">
+          <div class="game-header-main premium-header-main">
+            <div class="game-title-block">
+              <p class="eyebrow">Arcade Run Active</p>
+              <h2>Keep Typing</h2>
+            </div>
+            <div class="status-row game-status-row">
               <span id="game-player-tag" class="status-pill"></span>
               <span id="game-difficulty-tag" class="status-pill status-pill-accent"></span>
             </div>
           </div>
-          <div class="timer-badge">
-            <span class="timer-label">Time Left</span>
-            <span id="timer" class="timer-value">60s</span>
+          <div class="header-summary-pill">
+            <span class="header-summary-label">Live Round</span>
+            <strong>60s Arcade Challenge</strong>
           </div>
         </div>
 
-        <div class="quote-box">
-          <p class="quote-label">Target Text</p>
-          <div id="text-display" class="text-display" aria-live="polite"></div>
+        <div class="game-layout">
+          <div class="game-main-column">
+            <div id="typing-stage" class="typing-stage premium-typing-stage">
+              <div class="stage-head">
+                <div>
+                  <span class="mini-card-label">Target Text</span>
+                  <h3>Lock into the rhythm</h3>
+                </div>
+                <span class="stage-note">Correct letters glow green. Mistakes flash red.</span>
+              </div>
+
+              <div class="quote-box premium-quote-box">
+                <div id="text-display" class="text-display challenge-line premium-challenge-line" aria-live="polite"></div>
+              </div>
+
+              <div class="typing-input-wrap">
+                <label for="typing-input" class="typing-label">Type here</label>
+                <textarea
+                  id="typing-input"
+                  class="typing-input premium-input"
+                  rows="4"
+                  placeholder="Start typing..."
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                ></textarea>
+                <p class="submit-hint">The run auto-finishes when the full text is correct, or you can press Enter anytime to end the run and save your current score.</p>
+              </div>
+            </div>
+          </div>
+
+          <aside class="game-side-column">
+            <article class="hud-card timer-card">
+              <span class="mini-card-label">Time Left</span>
+              <div class="timer-orbit" aria-hidden="true">
+                <div class="timer-orbit-core">
+                  <span id="timer" class="timer-value">60s</span>
+                </div>
+              </div>
+              <p class="timer-caption">Beat the full line before the clock runs out.</p>
+            </article>
+
+            <article class="hud-card progress-card">
+              <div class="hud-card-head">
+                <div>
+                  <span class="mini-card-label">Progress</span>
+                  <h3>Completion</h3>
+                </div>
+                <strong id="completion-percent" class="completion-percent">0%</strong>
+              </div>
+              <div class="progress-track progress-track-large" aria-hidden="true">
+                <div id="completion-progress" class="progress-fill"></div>
+              </div>
+              <div class="live-score-inline">
+                <div class="live-score-copy">
+                  <span class="stat-label">Score Preview</span>
+                  <strong id="score-preview">0</strong>
+                </div>
+                <span class="live-score-note">Live score based on speed, accuracy, combo, and streak.</span>
+              </div>
+            </article>
+
+            <section id="combo-banner" class="combo-banner premium-combo-banner" data-combo-state="normal" aria-live="polite">
+              <div class="combo-copy premium-combo-copy">
+                <span class="combo-kicker">Momentum</span>
+                <h3 id="combo-text" class="combo-text">COMBO x1</h3>
+                <p id="combo-flavor" class="combo-flavor">Build a 10-hit streak for Combo x2.</p>
+              </div>
+              <div class="premium-combo-meta">
+                <div class="combo-pill">
+                  <span class="combo-chip-label">Multiplier</span>
+                  <strong id="combo-multiplier-display" class="combo-chip-value">x1</strong>
+                </div>
+                <div class="combo-pill">
+                  <span class="combo-chip-label">Streak</span>
+                  <strong id="combo-streak-display" class="combo-chip-value">0</strong>
+                </div>
+              </div>
+            </section>
+          </aside>
         </div>
 
-        <label for="typing-input" class="typing-label">Type here</label>
-        <textarea
-          id="typing-input"
-          class="typing-input"
-          rows="4"
-          placeholder="Start typing the text above..."
-          spellcheck="false"
-          autocomplete="off"
-          autocorrect="off"
-          autocapitalize="off"
-        ></textarea>
-        <p class="submit-hint">Want to submit your attempt early? Press Enter to finish and save your result.</p>
-
-        <div class="stats-grid">
-          <article class="stat-card accent">
+        <div class="stats-grid premium-stats-grid premium-stats-band">
+          <article class="stat-card premium-stat accent">
+            <span class="stat-icon" aria-hidden="true">⌨</span>
             <span class="stat-label">WPM</span>
             <strong id="wpm">0</strong>
+            <small>Typing pace</small>
           </article>
-          <article class="stat-card">
+          <article class="stat-card premium-stat">
+            <span class="stat-icon" aria-hidden="true">◎</span>
             <span class="stat-label">Accuracy</span>
             <strong id="accuracy">100%</strong>
+            <small>Clean input</small>
           </article>
-          <article class="stat-card danger">
+          <article class="stat-card premium-stat danger">
+            <span class="stat-icon" aria-hidden="true">✕</span>
             <span class="stat-label">Mistakes</span>
             <strong id="mistakes">0</strong>
+            <small>Total misses</small>
           </article>
-          <article class="stat-card">
-            <span class="stat-label">Current Streak</span>
+          <article class="stat-card premium-stat">
+            <span class="stat-icon" aria-hidden="true">↗</span>
+            <span class="stat-label">Streak</span>
             <strong id="streak">0</strong>
+            <small>Current run</small>
           </article>
-          <article class="stat-card">
+          <article class="stat-card premium-stat">
+            <span class="stat-icon" aria-hidden="true">★</span>
             <span class="stat-label">Best Streak</span>
             <strong id="best-streak">0</strong>
+            <small>Peak momentum</small>
           </article>
-          <article class="stat-card score-card">
-            <span class="stat-label">Score Preview</span>
-            <strong id="score-preview">0</strong>
+          <article class="stat-card premium-stat combo-stat">
+            <span class="stat-icon" aria-hidden="true">◈</span>
+            <span class="stat-label">Current Combo</span>
+            <strong id="combo-stat">x1</strong>
+            <small>Live points</small>
           </article>
         </div>
       </div>
