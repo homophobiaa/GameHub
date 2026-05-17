@@ -1,4 +1,6 @@
 export const HALF_BEAT = 0.5;
+export const QUARTER_BEAT = 0.25;
+export const BETWEEN_HALF_BEAT_OFFSET = HALF_BEAT / 2;
 export const EPSILON = 0.0001;
 
 export function beatPhase(beat) {
@@ -17,12 +19,26 @@ export function snapToHalfBeat(value) {
   return Math.round(value / HALF_BEAT) * HALF_BEAT;
 }
 
+export function snapToQuarterBeat(value) {
+  return Math.round(value / QUARTER_BEAT) * QUARTER_BEAT;
+}
+
 export function floorToHalfBeat(value) {
   return Math.floor(value / HALF_BEAT) * HALF_BEAT;
 }
 
 export function nextHalfBeatAfter(beat) {
   return Math.floor(beat / HALF_BEAT + EPSILON) * HALF_BEAT + HALF_BEAT;
+}
+
+export function nextBetweenHalfBeatAtOrAfter(beat) {
+  const midpoint = Math.floor(beat / HALF_BEAT) * HALF_BEAT + BETWEEN_HALF_BEAT_OFFSET;
+  return midpoint >= beat - EPSILON ? midpoint : midpoint + HALF_BEAT;
+}
+
+export function nextBetweenHalfBeatAfter(beat) {
+  const midpoint = nextBetweenHalfBeatAtOrAfter(beat);
+  return midpoint > beat + EPSILON ? midpoint : midpoint + HALF_BEAT;
 }
 
 export function halfBeatKey(beat) {

@@ -8,10 +8,15 @@ const STORE_DEFS = {
     name: "Warehouse",
     copy: "Pick a new bullet to add to your arsenal.",
   },
-  forgery: {
-    id: "forgery",
-    name: "Forgery",
-    copy: "Improve one bullet you currently own.",
+  whetstone: {
+    id: "whetstone",
+    name: "Whetstone",
+    copy: "Hone one bullet you currently own.",
+  },
+  wrecker: {
+    id: "wrecker",
+    name: "Wrecker",
+    copy: "Scrap one bullet into two inert chips.",
   },
   workshop: {
     id: "workshop",
@@ -19,7 +24,14 @@ const STORE_DEFS = {
     copy: "Tune the run itself.",
   },
 };
-export const STORE_CYCLE = ["warehouse", "forgery", "workshop"];
+export const STORE_CYCLE = [
+  "warehouse",
+  "workshop",
+  "whetstone",
+  "warehouse",
+  "workshop",
+  "wrecker",
+];
 
 function createWarehouseChoices() {
   return pickRandom(BULLET_POOL, 3).map((id) => ({
@@ -34,7 +46,24 @@ function getUpgradeablePieces(track) {
   return track.allPieces.filter((piece) => !piece.upgraded);
 }
 
-function createForgeryChoices() {
+function getScrappablePieces(track) {
+  const seenGroups = new Set();
+  return track.allPieces.filter((piece) => {
+    if (piece.groupId) {
+      if (seenGroups.has(piece.groupId)) {
+        return false;
+      }
+      seenGroups.add(piece.groupId);
+    }
+
+    const groupSize = piece.groupId
+      ? track.getGroupPieces(piece.groupId).length
+      : 1;
+    return track.allPieces.length - groupSize > 0;
+  });
+}
+
+function createSlotStoreChoices() {
   return [];
 }
 
@@ -84,8 +113,8 @@ function createChoicesForStore(storeId, track, runState) {
     return createWarehouseChoices(track, runState);
   }
 
-  if (storeId === "forgery") {
-    return createForgeryChoices(track, runState);
+  if (storeId === "whetstone" || storeId === "wrecker") {
+    return createSlotStoreChoices(track, runState);
   }
 
   return createWorkshopChoices(track, runState);
@@ -95,13 +124,18 @@ function createOfferForStore(store, track, runState) {
   return {
     store,
     choices: createChoicesForStore(store.id, track, runState),
-    upgradeableCount: store.id === "forgery" ? getUpgradeablePieces(track).length : 0,
+    upgradeableCount: store.id === "whetstone" ? getUpgradeablePieces(track).length : 0,
+    scrappableCount: store.id === "wrecker" ? getScrappablePieces(track).length : 0,
   };
 }
 
 function canUseOffer(offer) {
-  if (offer.store.id === "forgery") {
+  if (offer.store.id === "whetstone") {
     return offer.upgradeableCount > 0;
+  }
+
+  if (offer.store.id === "wrecker") {
+    return offer.scrappableCount > 0;
   }
 
   return offer.choices.length > 0;

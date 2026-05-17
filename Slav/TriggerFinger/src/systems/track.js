@@ -15,9 +15,7 @@ import {
   isValidTiming,
   snapToHalfBeat,
 } from "../utils/beatMath.js";
-
-const GOOD_WINDOW_BEATS = 0.18;
-const TRACK_RELOAD_BEATS = 2;
+import { GOOD_WINDOW_BEATS, TRACK_RELOAD_BEATS } from "../config/gameplay.js";
 
 function clonePiece(piece) {
   return {
@@ -91,14 +89,46 @@ export class BeatTrack {
     this.inventory = initial.inventory;
     this.pieceOrder = [...initial.placements, ...initial.inventory].map((piece) => piece.uid);
     this.selectedUid = this.placements[0]?.uid ?? this.inventory[0]?.uid ?? null;
+    this.invalidateTrackCache();
     this.start(0);
   }
 
+  invalidatePieceCache() {
+    this._allPieces = null;
+    this._piecesByUid = null;
+    this._groupPiecesById = null;
+  }
+
+  invalidatePlacementCache() {
+    this._sortedPlacements = null;
+    this._placementUids = null;
+    this._timelineMarks = null;
+  }
+
+  invalidateTrackCache() {
+    this.invalidatePieceCache();
+    this.invalidatePlacementCache();
+  }
+
   get allPieces() {
-    const piecesByUid = new Map(
-      [...this.placements, ...this.inventory].map((piece) => [piece.uid, piece]),
-    );
-    return this.pieceOrder.map((uid) => piecesByUid.get(uid)).filter(Boolean);
+    if (!this._allPieces) {
+      this._piecesByUid = new Map(
+        [...this.placements, ...this.inventory].map((piece) => [piece.uid, piece]),
+      );
+      this._allPieces = this.pieceOrder
+        .map((uid) => this._piecesByUid.get(uid))
+        .filter(Boolean);
+    }
+
+    return this._allPieces;
+  }
+
+  get piecesByUid() {
+    if (!this._piecesByUid) {
+      this.allPieces;
+    }
+
+    return this._piecesByUid;
   }
 
   get slots() {
@@ -106,7 +136,19 @@ export class BeatTrack {
   }
 
   get sortedPlacements() {
-    return [...this.placements].sort((a, b) => a.beat - b.beat);
+    if (!this._sortedPlacements) {
+      this._sortedPlacements = [...this.placements].sort((a, b) => a.beat - b.beat);
+    }
+
+    return this._sortedPlacements;
+  }
+
+  get placementUids() {
+    if (!this._placementUids) {
+      this._placementUids = new Set(this.placements.map((placement) => placement.uid));
+    }
+
+    return this._placementUids;
   }
 
   get currentEntry() {
@@ -161,17 +203,21 @@ export class BeatTrack {
   }
 
   getTimelineMarks() {
-    const marks = [];
-    for (let beat = 0; beat < this.cycleBeats - EPSILON; beat += HALF_BEAT) {
-      marks.push({
-        beat,
-        isBeat: isOnBeat(beat),
-        isOffBeat: isOffBeat(beat),
-        left: (beat / this.cycleBeats) * 100,
-      });
+    if (!this._timelineMarks) {
+      const marks = [];
+      for (let beat = 0; beat < this.cycleBeats - EPSILON; beat += HALF_BEAT) {
+        marks.push({
+          beat,
+          isBeat: isOnBeat(beat),
+          isOffBeat: isOffBeat(beat),
+          left: (beat / this.cycleBeats) * 100,
+        });
+      }
+
+      this._timelineMarks = marks;
     }
 
-    return marks;
+    return this._timelineMarks;
   }
 
   start(currentBeat) {
@@ -185,17 +231,30 @@ export class BeatTrack {
   }
 
   setSelected(uid) {
-    if (this.allPieces.some((piece) => piece.uid === uid)) {
+    if (this.piecesByUid.has(uid)) {
       this.selectedUid = uid;
     }
   }
 
   findPiece(uid) {
-    return this.allPieces.find((piece) => piece.uid === uid) ?? null;
+    return this.piecesByUid.get(uid) ?? null;
   }
 
   getGroupPieces(groupId) {
-    return this.allPieces.filter((piece) => piece.groupId === groupId);
+    if (!this._groupPiecesById) {
+      this._groupPiecesById = new Map();
+      this.allPieces.forEach((piece) => {
+        if (!piece.groupId) {
+          return;
+        }
+
+        const group = this._groupPiecesById.get(piece.groupId) ?? [];
+        group.push(piece);
+        this._groupPiecesById.set(piece.groupId, group);
+      });
+    }
+
+    return this._groupPiecesById.get(groupId) ?? [];
   }
 
   getElapseMate(piece) {
@@ -208,7 +267,7 @@ export class BeatTrack {
   }
 
   isPieceOnTrack(uid) {
-    return this.placements.some((placement) => placement.uid === uid);
+    return this.placementUids.has(uid);
   }
 
   isElapseGroupCompleteOnTrack(groupId) {
@@ -224,10 +283,13 @@ export class BeatTrack {
 
   getInitialTargetBeat(placement, currentBeat) {
     const safeCurrentBeat = finiteBeat(currentBeat);
-    let absoluteBeat = this.getCurrentCycleStart(currentBeat) + placement.beat;
+    const def = getBulletDef(placement.id);
+    let cycleBeat = this.getCurrentCycleStart(currentBeat) + placement.beat;
+    let absoluteBeat = alignTimingAtOrAfter(cycleBeat, def.timing);
 
     while (absoluteBeat < safeCurrentBeat - GOOD_WINDOW_BEATS) {
-      absoluteBeat += this.cycleBeats;
+      cycleBeat += this.cycleBeats;
+      absoluteBeat = alignTimingAtOrAfter(cycleBeat, def.timing);
     }
 
     return absoluteBeat;
@@ -334,8 +396,9 @@ export class BeatTrack {
     const didWrap = this.isWrapTransition(previousIndex, this.currentIndex);
     const gap = this.getTransitionGap(previousIndex, this.currentIndex);
     const nextTargetBeat = alignTimingAtOrAfter(safeTargetBeat + gap, nextEntry.def.timing);
-    this.reloadUntilBeat = didWrap ? safeTargetBeat + TRACK_RELOAD_BEATS : null;
-    this.readyAfterBeat = didWrap ? nextTargetBeat : safeTargetBeat + HALF_BEAT;
+    const reloadReleaseBeat = didWrap ? safeTargetBeat + TRACK_RELOAD_BEATS : null;
+    this.reloadUntilBeat = reloadReleaseBeat;
+    this.readyAfterBeat = didWrap ? reloadReleaseBeat : safeTargetBeat + HALF_BEAT;
     this.lockUntilBeat = this.readyAfterBeat;
     this.baseTargetBeat = nextTargetBeat;
     this.targetBeat = this.getTargetBeat(this.readyAfterBeat);
@@ -476,6 +539,7 @@ export class BeatTrack {
       ...clonePiece(existing),
       beat: result.beat,
     });
+    this.invalidateTrackCache();
     this.selectedUid = uid;
     this.currentIndex = Math.min(this.currentIndex ?? 0, this.sortedPlacements.length - 1);
     this.baseTargetBeat = null;
@@ -500,11 +564,40 @@ export class BeatTrack {
         this.inventory.push(clonePiece(piece));
       }
     });
+    this.invalidateTrackCache();
     this.selectedUid = uid;
     this.currentIndex = Math.min(this.currentIndex ?? 0, Math.max(0, this.sortedPlacements.length - 1));
     this.baseTargetBeat = null;
     this.syncTarget(this.targetBeat ?? 0);
     return true;
+  }
+
+  removePiece(uid) {
+    const piece = this.findPiece(uid);
+    if (!piece) {
+      return [];
+    }
+
+    const uidsToRemove = isElapsePiece(piece) && piece.groupId
+      ? this.getGroupPieces(piece.groupId).map((groupPiece) => groupPiece.uid)
+      : [uid];
+    const removeSet = new Set(uidsToRemove);
+    const removedPieces = this.allPieces
+      .filter((nextPiece) => removeSet.has(nextPiece.uid))
+      .map(clonePiece);
+
+    this.placements = this.placements.filter((nextPiece) => !removeSet.has(nextPiece.uid));
+    this.inventory = this.inventory.filter((nextPiece) => !removeSet.has(nextPiece.uid));
+    this.pieceOrder = this.pieceOrder.filter((nextUid) => !removeSet.has(nextUid));
+    this.invalidateTrackCache();
+
+    if (removeSet.has(this.selectedUid)) {
+      this.selectedUid = this.placements[0]?.uid ?? this.inventory[0]?.uid ?? null;
+    }
+    this.currentIndex = Math.min(this.currentIndex ?? 0, Math.max(0, this.sortedPlacements.length - 1));
+    this.baseTargetBeat = null;
+    this.syncTarget(this.targetBeat ?? 0);
+    return removedPieces;
   }
 
   addInventoryPiece(id) {
@@ -518,6 +611,7 @@ export class BeatTrack {
         { uid: leftUid, id: "elapse-left", upgraded: false, groupId },
         { uid: rightUid, id: "elapse-right", upgraded: false, groupId },
       );
+      this.invalidatePieceCache();
       this.selectedUid = leftUid;
       return;
     }
@@ -525,6 +619,7 @@ export class BeatTrack {
     const uid = nextUid(this.allPieces);
     this.pieceOrder.push(uid);
     this.inventory.push({ uid, id, upgraded: false });
+    this.invalidatePieceCache();
     this.selectedUid = uid;
   }
 
@@ -544,6 +639,7 @@ export class BeatTrack {
 
   expandCycle(beats = 1) {
     this.cycleBeats = Math.min(12, this.cycleBeats + beats);
+    this._timelineMarks = null;
     this.baseTargetBeat = null;
   }
 }

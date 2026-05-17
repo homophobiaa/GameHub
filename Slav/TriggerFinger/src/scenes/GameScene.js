@@ -1,18 +1,27 @@
-import { STARTING_TRACK, getBulletDef, getElapseHalf, isElapsePiece } from "../defs/bullets.js";
+import {
+  STARTING_TRACK,
+  getBulletDef,
+  getElapseHalf,
+  getSlotColor,
+  getSlotName,
+  isElapsePiece,
+} from "../defs/bullets.js";
 import { getAspectForSource } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
 import { BeatTrack } from "../systems/track.js";
 import {
   applyEnemyBeatEffects,
+  applyAspectToBasic,
   getEnemySpeedMultipliers,
   getLaneSpeedBoosts,
-  grantAspectToBasics,
+  pickAspectSpreadTargets,
   updateLeapEnemy,
 } from "../systems/enemyRuntime.js";
 import {
   resolveBulletShot,
   resolveElapseFinish,
   resolveElapseStart,
+  resolvePiercingImpact,
   updateDamageOverTime,
   updateElapseBeamDamage,
 } from "../systems/combat.js";
@@ -20,12 +29,21 @@ import { WaveRunner } from "../systems/waveRunner.js";
 import { applyUpgradeChoice, createStoreOffer } from "../systems/upgrades.js";
 import { createEnemyDraftChoices, shouldDraftEnemy } from "../systems/enemyDraft.js";
 import { getDamageMultiplier, rateTiming } from "../systems/timing.js";
+import { createEnemyFrameIndex } from "../systems/enemyFrameIndex.js";
+import {
+  BEAT_BURST_SECONDS,
+  BEAT_FLASH_SECONDS,
+  ASPECT_SPREAD_TARGET_COUNT,
+  GOOD_WINDOW_BEATS,
+  STARTING_HEALTH,
+} from "../config/gameplay.js";
 import { GameRenderer } from "../render/GameRenderer.js";
 import { BeatBarView, markerOffsetPercent } from "../ui/beatBarView.js";
-import { renderGameOverPanel, renderIntermissionPanel } from "../ui/intermissionPanel.js";
-import { isOnBeat } from "../utils/beatMath.js";
+import { appendCombatEvents } from "../ui/combatEventView.js";
+import { IntermissionView } from "../ui/intermissionView.js";
+import { DOMAIN_EDGE_VISUAL_GAP } from "../ui/timelineMetrics.js";
+import { EPSILON, isOnBeat, nextHalfBeatAfter, snapToQuarterBeat } from "../utils/beatMath.js";
 import { clamp } from "../utils/math.js";
-import { pickRandom } from "../utils/random.js";
 import { MenuScene } from "./MenuScene.js";
 
 const LANE_KEYS = new Map([
@@ -40,11 +58,9 @@ const LANE_KEYS = new Map([
   ["arrowright", 2],
 ]);
 
-const STARTING_HEALTH = 10;
 const WAVE_CLEAR_OUTRO_SECONDS = 0.85;
 const WAVE_PROGRESS_FLASH_SECONDS = 0.5;
 const BEAT_BAR_WINDDOWN_SECONDS = 0.7;
-const GOOD_WINDOW_BEATS = 0.18;
 
 export class GameScene {
   constructor({ manager, props = {} }) {
@@ -56,6 +72,8 @@ export class GameScene {
     this.effects = [];
     this.floaters = [];
     this.echoes = [];
+    this.pendingPiercingImpacts = [];
+    this.pendingAspectSpreads = [];
     this.activeElapse = null;
     this.beat = 0;
     this.runSeconds = 0;
@@ -97,6 +115,10 @@ export class GameScene {
     this.dragPayload = null;
     this.forgeryAnimating = false;
     this.forgeCandidateUid = null;
+    this.wreckerCandidateUid = null;
+    this.scrapChips = [];
+    this.scrapChipSerial = 0;
+    this.lastScrappedChipUids = [];
     this.activeElapse = null;
     this.pointerLane = null;
   }
@@ -137,6 +159,7 @@ export class GameScene {
     this.canvas = this.el.querySelector("canvas");
     this.renderer = new GameRenderer(this.canvas);
     this.overlay = this.el.querySelector("[data-overlay]");
+    this.intermissionView = new IntermissionView(this.overlay);
     this.laneButtons = this.el.querySelector(".lane-buttons");
     this.screenEffects = this.el.querySelector("[data-screen-effects]");
     this.progressEl = this.el.querySelector("[data-wave-progress]");
@@ -155,6 +178,7 @@ export class GameScene {
     this.resizeObserver = new ResizeObserver(this.resize);
     this.resizeObserver.observe(this.canvas);
     this.el.addEventListener("click", this.onClick);
+    this.el.addEventListener("contextmenu", this.onContextMenu);
     this.overlay.addEventListener("dragstart", this.onDragStart);
     this.overlay.addEventListener("dragover", this.onDragOver);
     this.overlay.addEventListener("drop", this.onDrop);
@@ -168,6 +192,10 @@ export class GameScene {
     this.resize();
     this.showIntermission(true);
   }
+
+  onContextMenu = (event) => {
+    event.preventDefault();
+  };
 
   resize = () => {
     this.renderer?.resize();
@@ -205,8 +233,14 @@ export class GameScene {
       return;
     }
 
+    if (action === "wreck-candidate") {
+      this.wreckCandidate();
+      return;
+    }
+
     if (action.startsWith("enemy-choice:")) {
-      this.chooseEnemyType(action.split(":")[1]);
+      const [, kind, type] = action.split(":");
+      this.chooseEnemyType(type ?? kind, type ? kind : null);
     }
 
     if (action.startsWith("select-piece:")) {
@@ -264,12 +298,29 @@ export class GameScene {
       return;
     }
 
+    const chip = event.target.closest("[data-chip-uid]");
+    if (chip && event.dataTransfer) {
+      const payload = {
+        kind: "chip",
+        chipUid: chip.dataset.chipUid,
+        source: chip.dataset.chipSource,
+      };
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", JSON.stringify(payload));
+      event.dataTransfer.setDragImage(this.getTransparentDragImage(), 0, 0);
+      this.startDragProxy(chip, event);
+      this.dragPayload = payload;
+      this.highlightValidChipPlacements(payload.chipUid);
+      return;
+    }
+
     const piece = event.target.closest("[data-piece-uid]");
     if (!piece || !event.dataTransfer) {
       return;
     }
 
     const payload = {
+      kind: "piece",
       uid: piece.dataset.pieceUid,
       source: piece.dataset.pieceSource,
     };
@@ -285,13 +336,20 @@ export class GameScene {
   onDragOver = (event) => {
     this.moveDragProxy(event);
     const dropBeat = event.target.closest("[data-drop-beat]");
+    const chipDrop = event.target.closest("[data-chip-drop-beat]");
     const forgeryDrop = event.target.closest("[data-forgery-drop]");
-    this.updateDropHover(dropBeat);
+    const wreckerDrop = event.target.closest("[data-wrecker-drop]");
+    const inventoryDrop = event.target.closest("[data-inventory-drop]");
+    const isChipDrag = this.dragPayload?.kind === "chip";
+    this.updateDropHover(isChipDrag ? null : dropBeat);
+    this.updateChipDropHover(isChipDrag ? chipDrop : null);
 
     if (
-      dropBeat ||
+      (isChipDrag && (chipDrop || inventoryDrop || forgeryDrop || wreckerDrop)) ||
+      (dropBeat && !isChipDrag) ||
       (forgeryDrop && this.canForgePiece(this.dragPayload?.uid)) ||
-      event.target.closest("[data-inventory-drop]")
+      (wreckerDrop && this.canWreckPiece(this.dragPayload?.uid)) ||
+      (inventoryDrop && !isChipDrag)
     ) {
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
@@ -307,14 +365,55 @@ export class GameScene {
     event.preventDefault();
     const payload = JSON.parse(data);
     const dropBeat = event.target.closest("[data-drop-beat]");
+    const chipDrop = event.target.closest("[data-chip-drop-beat]");
     const forgeryDrop = event.target.closest("[data-forgery-drop]");
+    const wreckerDrop = event.target.closest("[data-wrecker-drop]");
+    const chipTrayDrop = event.target.closest("[data-chip-tray-drop]");
+
+    if (payload.kind === "chip") {
+      if (chipDrop) {
+        this.endDragProxy();
+        this.placeChipAt(payload.chipUid, Number(chipDrop.dataset.chipDropBeat));
+        return;
+      }
+
+      if (chipTrayDrop || event.target.closest("[data-inventory-drop]")) {
+        const didReturn = this.returnChipToTray(payload.chipUid);
+        if (didReturn) {
+          this.editorMessage = chipTrayDrop
+            ? "Chip returned to the tray."
+            : "Chip returned with the inventory.";
+        }
+        this.endDragProxy();
+        this.showIntermission();
+        return;
+      }
+
+      this.editorMessage = "Chips need a quarter-beat inside a bullet domain.";
+      this.endDragProxy();
+      this.showIntermission();
+      return;
+    }
 
     if (forgeryDrop) {
       this.forgeCandidateUid = this.canForgePiece(payload.uid) ? payload.uid : null;
+      this.wreckerCandidateUid = null;
       this.track.setSelected(payload.uid);
       this.editorMessage = this.forgeCandidateUid
-        ? "Click the forgery panel to upgrade."
+        ? "Click the Whetstone panel to hone."
         : "That bullet cannot be upgraded.";
+      this.endDragProxy();
+      this.showIntermission();
+      return;
+    }
+
+    if (wreckerDrop) {
+      this.wreckerCandidateUid = this.canWreckPiece(payload.uid) ? payload.uid : null;
+      this.forgeCandidateUid = null;
+      this.track.setSelected(payload.uid);
+      this.editorMessage = this.wreckerCandidateUid
+        ? "Click the Wrecker panel to scrap."
+        : "That bullet cannot be scrapped.";
       this.endDragProxy();
       this.showIntermission();
       return;
@@ -330,7 +429,11 @@ export class GameScene {
     if (event.target.closest("[data-inventory-drop]")) {
       this.moveDragProxy(event);
       const returnSnapshot = this.getInventoryReturnSnapshot();
+      const hostUids = this.getPieceRemovalUids(this.track.findPiece(payload.uid)).filter(Boolean);
       const didMove = this.track.movePieceToInventory(payload.uid);
+      if (didMove) {
+        this.returnChipsForHosts(hostUids);
+      }
       this.editorMessage = "";
       this.endDragProxy();
       this.showIntermission();
@@ -369,10 +472,16 @@ export class GameScene {
       className.startsWith("is-elapse-"),
     );
     const upgradedClass = source.classList.contains("is-upgraded") ? "is-upgraded" : "";
-    proxy.className = ["drag-proxy", timingClass, ...elapseClasses, upgradedClass]
+    const isScrapChip = source.classList.contains("scrap-chip-token");
+    proxy.className = ["drag-proxy", isScrapChip ? "is-scrap-chip" : "", timingClass, ...elapseClasses, upgradedClass]
       .filter(Boolean)
       .join(" ");
-    proxy.style.setProperty("--piece-color", styles.getPropertyValue("--piece-color").trim());
+    const pieceColor = styles.getPropertyValue("--piece-color").trim();
+    const chipColor = styles.getPropertyValue("--chip-color").trim();
+    proxy.style.setProperty("--piece-color", pieceColor || chipColor);
+    if (chipColor) {
+      proxy.style.setProperty("--chip-color", chipColor);
+    }
     const dragDomain = this.getDragDomainMetrics(source);
     if (dragDomain) {
       proxy.style.setProperty("--domain-width", `${dragDomain.width}px`);
@@ -380,13 +489,15 @@ export class GameScene {
       proxy.style.setProperty("--proxy-width", `${dragDomain.proxyWidth}px`);
     }
 
-    const domain = document.createElement("span");
-    domain.className = "drag-proxy-domain";
-    proxy.append(domain);
+    if (!isScrapChip) {
+      const domain = document.createElement("span");
+      domain.className = "drag-proxy-domain";
+      proxy.append(domain);
+    }
 
-    const glyph = source.querySelector(".bullet-glyph")?.cloneNode(true);
-    if (glyph) {
-      proxy.append(glyph);
+    const visual = source.querySelector(".bullet-glyph, .scrap-chip-body")?.cloneNode(true);
+    if (visual) {
+      proxy.append(visual);
     }
 
     document.body.append(proxy);
@@ -459,13 +570,22 @@ export class GameScene {
     };
   }
 
+  getPieceReturnTarget(uid) {
+    const source = this.track.isPieceOnTrack(uid) ? "track" : "inventory";
+    return this.overlay.querySelector(`[data-piece-uid="${uid}"][data-piece-source="${source}"]`);
+  }
+
   animateInventoryReturn(uid, snapshot) {
     if (!snapshot) {
       return;
     }
 
-    const target = this.overlay.querySelector(`[data-piece-uid="${uid}"][data-piece-source="inventory"]`);
+    const target = this.getPieceReturnTarget(uid);
     if (!target) {
+      console.warn("Missing return animation target", {
+        uid,
+        source: this.track.isPieceOnTrack(uid) ? "track" : "inventory",
+      });
       return;
     }
 
@@ -672,6 +792,167 @@ export class GameScene {
     }
   }
 
+  createWreckerFlash(center, color) {
+    const flash = document.createElement("span");
+    flash.className = "wrecker-flash";
+    flash.style.left = `${center.x}px`;
+    flash.style.top = `${center.y}px`;
+    flash.style.setProperty("--spark-color", color);
+    document.body.append(flash);
+    const animation = flash.animate(
+      [
+        { opacity: 0, transform: "translate(-50%, -50%) scale(0.35)" },
+        { opacity: 0.92, offset: 0.24, transform: "translate(-50%, -50%) scale(1)" },
+        { opacity: 0, transform: "translate(-50%, -50%) scale(1.55)" },
+      ],
+      {
+        duration: 420,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+        fill: "forwards",
+      },
+    );
+    animation.addEventListener("finish", () => flash.remove(), { once: true });
+    animation.addEventListener("cancel", () => flash.remove(), { once: true });
+  }
+
+  createChipGhost(rect, color) {
+    const ghost = document.createElement("div");
+    ghost.className = "wrecker-chip-ghost scrap-chip-token";
+    ghost.style.setProperty("--chip-color", color);
+    ghost.style.setProperty("--piece-color", color);
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.innerHTML = `<span class="scrap-chip-body"></span>`;
+    document.body.append(ghost);
+    return ghost;
+  }
+
+  getChipReturnTarget(chipUid) {
+    return this.overlay.querySelector(`[data-chip-uid="${chipUid}"][data-chip-source="inventory"]`);
+  }
+
+  animateChipGhostToTarget(chipUid, ghost) {
+    if (!chipUid) {
+      ghost.remove();
+      return Promise.resolve();
+    }
+
+    const target = this.getChipReturnTarget(chipUid);
+    if (!target) {
+      console.warn("Missing chip animation target", { chipUid });
+      ghost.remove();
+      return Promise.resolve();
+    }
+
+    const startRect = ghost.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    target.classList.add("is-chip-arriving");
+
+    const startCenterX = startRect.left + startRect.width / 2;
+    const startCenterY = startRect.top + startRect.height / 2;
+    const targetCenterX = targetRect.left + targetRect.width / 2;
+    const targetCenterY = targetRect.top + targetRect.height / 2;
+    const scaleX = targetRect.width / startRect.width;
+    const scaleY = targetRect.height / startRect.height;
+    const animation = ghost.animate(
+      [
+        { opacity: 1, transform: "translate(0, 0) scale(1)" },
+        {
+          opacity: 0.98,
+          transform: `translate(${targetCenterX - startCenterX}px, ${targetCenterY - startCenterY}px) scale(${scaleX}, ${scaleY})`,
+        },
+      ],
+      {
+        duration: 330,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+        fill: "forwards",
+      },
+    );
+
+    return animation.finished.catch(() => {}).then(() => {
+      ghost.remove();
+      target.classList.remove("is-chip-arriving");
+    });
+  }
+
+  async animateWreckerScrap(uid, snapshot) {
+    if (!snapshot || !this.canWreckPiece(uid)) {
+      this.wreckPiece(uid);
+      return;
+    }
+
+    this.forgeryAnimating = true;
+    this.wreckerCandidateUid = uid;
+    snapshot.source?.classList.add("is-forging-source");
+
+    const center = {
+      x: snapshot.rect.left + snapshot.rect.width / 2,
+      y: snapshot.rect.top + snapshot.rect.height / 2,
+    };
+    const bulletGhost = document.createElement("div");
+    bulletGhost.className = ["wrecker-scrap-ghost", "drag-proxy", snapshot.timingClass, snapshot.extraClasses]
+      .filter(Boolean)
+      .join(" ");
+    bulletGhost.style.setProperty("--piece-color", snapshot.color);
+    bulletGhost.style.left = `${center.x}px`;
+    bulletGhost.style.top = `${center.y}px`;
+    bulletGhost.innerHTML = `
+      <span class="bullet-glyph ${snapshot.timingClass}">
+        <span class="bullet-glyph-main"></span>
+      </span>
+    `;
+    document.body.append(bulletGhost);
+
+    const crush = bulletGhost.animate(
+      [
+        { filter: "brightness(1)", transform: "translate(-50%, -50%) scale(1)" },
+        { filter: "brightness(1.9)", transform: "translate(-50%, -50%) scale(1.12, 0.82)" },
+        { filter: "brightness(1.25)", transform: "translate(-50%, -50%) scale(0.42, 1.08)" },
+      ],
+      {
+        duration: 340,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+        fill: "forwards",
+      },
+    );
+
+    await crush.finished.catch(() => {});
+    this.createWreckerFlash(center, snapshot.color);
+    this.createForgerySparks(center, snapshot.color);
+    bulletGhost.remove();
+
+    const chipRect = {
+      left: center.x - 9,
+      top: center.y - 18,
+      width: 18,
+      height: 36,
+    };
+    const chipGhosts = [-13, 13].map((offset) =>
+      this.createChipGhost({ ...chipRect, left: chipRect.left + offset }, snapshot.color)
+    );
+
+    const didWreck = this.applyWreckPiece(uid);
+    if (!didWreck) {
+      chipGhosts.forEach((ghost) => ghost.remove());
+      snapshot.source?.classList.remove("is-forging-source");
+      this.forgeryAnimating = false;
+      this.showIntermission();
+      return;
+    }
+
+    const chipUids = [...this.lastScrappedChipUids];
+    snapshot.source?.classList.remove("is-forging-source");
+    this.showIntermission();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await Promise.all(chipGhosts.map((ghost, index) =>
+      this.animateChipGhostToTarget(chipUids[index], ghost)
+    ));
+    this.forgeryAnimating = false;
+    this.wreckerCandidateUid = null;
+  }
+
   highlightValidPlacements(uid) {
     const timeline = this.overlay.querySelector(".timeline-body");
     timeline?.classList.add("is-dragging");
@@ -684,9 +965,26 @@ export class GameScene {
     });
   }
 
+  highlightValidChipPlacements(chipUid) {
+    const timeline = this.overlay.querySelector(".timeline-body");
+    timeline?.classList.add("is-chip-dragging");
+
+    this.overlay.querySelectorAll("[data-chip-drop-beat]").forEach((drop) => {
+      const result = this.canPlaceChip(chipUid, Number(drop.dataset.chipDropBeat));
+      drop.classList.toggle("is-valid-drop", result.ok);
+      drop.classList.toggle("is-invalid-drop", !result.ok);
+      drop.title = result.ok ? "Place chip here" : result.reason;
+    });
+  }
+
   clearPlacementHighlights() {
     this.overlay?.querySelector(".timeline-body")?.classList.remove("is-dragging");
+    this.overlay?.querySelector(".timeline-body")?.classList.remove("is-chip-dragging");
     this.overlay?.querySelectorAll("[data-drop-beat]").forEach((drop) => {
+      drop.classList.remove("is-valid-drop", "is-invalid-drop", "is-hover-drop");
+      drop.removeAttribute("title");
+    });
+    this.overlay?.querySelectorAll("[data-chip-drop-beat]").forEach((drop) => {
       drop.classList.remove("is-valid-drop", "is-invalid-drop", "is-hover-drop");
       drop.removeAttribute("title");
     });
@@ -702,10 +1000,155 @@ export class GameScene {
     activeDrop?.classList.add("is-hover-drop");
   }
 
+  updateChipDropHover(activeDrop) {
+    this.overlay.querySelectorAll(".chip-timeline-drop.is-hover-drop").forEach((drop) => {
+      if (drop !== activeDrop) {
+        drop.classList.remove("is-hover-drop");
+      }
+    });
+
+    activeDrop?.classList.add("is-hover-drop");
+  }
+
+  findChip(chipUid) {
+    return this.scrapChips.find((chip) => chip.uid === chipUid) ?? null;
+  }
+
+  getChipHostAtBeat(beat) {
+    return this.track.getPlacementViews().find((entry) => {
+      const domainLength = entry.domain.end - entry.domain.start;
+      return domainLength > EPSILON &&
+        beat >= entry.domain.start - EPSILON &&
+        beat <= entry.domain.end + EPSILON;
+    }) ?? null;
+  }
+
+  canPlaceChip(chipUid, rawBeat) {
+    const chip = this.findChip(chipUid);
+    if (!chip) {
+      return { ok: false, reason: "Missing chip." };
+    }
+
+    const beat = Number(rawBeat);
+    if (!Number.isFinite(beat) || Math.abs(beat - snapToQuarterBeat(beat)) > EPSILON) {
+      return { ok: false, reason: "Quarter-beats only." };
+    }
+
+    if (beat < 0 || beat >= this.track.cycleBeats - EPSILON) {
+      return { ok: false, reason: "Outside the track." };
+    }
+
+    const host = this.getChipHostAtBeat(beat);
+    if (!host) {
+      return { ok: false, reason: "Place inside a bullet domain." };
+    }
+
+    if (host.id === "chip") {
+      return { ok: false, reason: "Chips cannot socket into Chip bullets." };
+    }
+
+    if (host.id === "pair" && host.upgraded) {
+      return { ok: false, reason: "Upgraded Pair has no chip socket space." };
+    }
+
+    if (Math.abs(beat - host.position) < EPSILON) {
+      return { ok: false, reason: "Chips cannot sit on top of the bullet." };
+    }
+
+    if (
+      beat < host.domain.start + DOMAIN_EDGE_VISUAL_GAP - EPSILON ||
+      beat > host.domain.end - DOMAIN_EDGE_VISUAL_GAP + EPSILON
+    ) {
+      return { ok: false, reason: "Use the visible middle of the domain." };
+    }
+
+    const occupied = this.scrapChips.find((otherChip) =>
+      otherChip.uid !== chipUid &&
+      otherChip.hostUid === host.uid &&
+      Number.isFinite(otherChip.beat) &&
+      Math.abs(otherChip.beat - beat) < EPSILON
+    );
+    if (occupied) {
+      return { ok: false, reason: "That chip beat is occupied." };
+    }
+
+    return { ok: true, beat, hostUid: host.uid, hostName: host.name };
+  }
+
+  placeChipAt(chipUid, rawBeat) {
+    const result = this.canPlaceChip(chipUid, rawBeat);
+    const chip = this.findChip(chipUid);
+    if (result.ok && chip) {
+      chip.hostUid = result.hostUid;
+      chip.beat = result.beat;
+      this.editorMessage = `Chip placed in ${result.hostName}'s domain.`;
+    } else {
+      this.editorMessage = result.reason;
+    }
+
+    this.showIntermission();
+  }
+
+  returnChipToTray(chipUid) {
+    const chip = this.findChip(chipUid);
+    if (!chip) {
+      this.editorMessage = "Missing chip.";
+      return false;
+    }
+
+    chip.hostUid = null;
+    chip.beat = null;
+    return true;
+  }
+
+  returnChipsForHosts(hostUids) {
+    const hostSet = new Set(hostUids.filter(Boolean));
+    if (hostSet.size === 0) {
+      return;
+    }
+
+    this.scrapChips.forEach((chip) => {
+      if (hostSet.has(chip.hostUid)) {
+        chip.hostUid = null;
+        chip.beat = null;
+      }
+    });
+  }
+
+  returnInvalidChipPlacements() {
+    this.scrapChips.forEach((chip) => {
+      if (!chip.hostUid || !Number.isFinite(chip.beat)) {
+        return;
+      }
+
+      const host = this.track.findPiece(chip.hostUid);
+      const isHostOnTrack = host && this.track.isPieceOnTrack(host.uid);
+      const domain = isHostOnTrack ? this.track.getDomain(host) : null;
+      const fitsDomain = domain &&
+        domain.end - domain.start > EPSILON &&
+        chip.beat >= domain.start - EPSILON &&
+        chip.beat <= domain.end + EPSILON;
+      if (!fitsDomain) {
+        chip.hostUid = null;
+        chip.beat = null;
+      }
+    });
+  }
+
+  getCombatChipsForSlot(uid) {
+    return this.scrapChips
+      .filter((chip) => chip.hostUid === uid && Number.isFinite(chip.beat))
+      .map((chip) => ({
+        uid: chip.uid,
+        sourceId: chip.sourceId,
+        sourceUpgraded: Boolean(chip.sourceUpgraded),
+      }));
+  }
+
   canForgePiece(uid) {
     const piece = uid ? this.track.findPiece(uid) : null;
     return Boolean(
-      this.storeOffer?.store.id === "forgery" &&
+      this.storeOffer?.store.id === "whetstone" &&
       this.storePicks > 0 &&
       piece &&
       !piece.upgraded,
@@ -714,7 +1157,7 @@ export class GameScene {
 
   applyForgePiece(uid) {
     const piece = this.track.findPiece(uid);
-    if (this.storeOffer?.store.id !== "forgery") {
+    if (this.storeOffer?.store.id !== "whetstone") {
       return false;
     }
 
@@ -734,8 +1177,10 @@ export class GameScene {
     }
 
     this.track.upgradePiece(uid);
+    this.returnInvalidChipPlacements();
     this.track.setSelected(uid);
     this.forgeCandidateUid = null;
+    this.wreckerCandidateUid = null;
     this.storePicks = Math.max(0, this.storePicks - 1);
     const remainingUpgradeable = this.track.allPieces.filter((nextPiece) => !nextPiece.upgraded).length;
     this.storeOffer = {
@@ -743,7 +1188,7 @@ export class GameScene {
       choices: [],
       upgradeableCount: remainingUpgradeable,
     };
-    this.editorMessage = "Bullet upgraded.";
+    this.editorMessage = "Bullet honed.";
 
     if (this.storePicks <= 0 || remainingUpgradeable === 0) {
       const leftoverPicks = Math.max(0, this.storePicks);
@@ -766,7 +1211,7 @@ export class GameScene {
   forgeCandidate() {
     const uid = this.forgeCandidateUid;
     if (!uid) {
-      this.editorMessage = "Drop a bullet into the forgery slot first.";
+      this.editorMessage = "Drop a bullet into the Whetstone slot first.";
       this.showIntermission();
       return;
     }
@@ -780,6 +1225,133 @@ export class GameScene {
 
     const snapshot = this.getForgeryUpgradeSnapshot(forgeryDrop, source);
     this.animateForgeryUpgrade(uid, snapshot);
+  }
+
+  getPieceRemovalUids(piece) {
+    if (!piece) {
+      return [];
+    }
+
+    if (isElapsePiece(piece) && piece.groupId) {
+      return this.track.getGroupPieces(piece.groupId).map((groupPiece) => groupPiece.uid);
+    }
+
+    return [piece.uid];
+  }
+
+  getScrappablePieceCount() {
+    const seenGroups = new Set();
+    return this.track.allPieces.filter((piece) => {
+      if (isElapsePiece(piece) && piece.groupId) {
+        if (seenGroups.has(piece.groupId)) {
+          return false;
+        }
+        seenGroups.add(piece.groupId);
+      }
+
+      return this.track.allPieces.length - this.getPieceRemovalUids(piece).length > 0;
+    }).length;
+  }
+
+  canWreckPiece(uid) {
+    const piece = uid ? this.track.findPiece(uid) : null;
+    if (!piece || this.storeOffer?.store.id !== "wrecker" || this.storePicks <= 0) {
+      return false;
+    }
+
+    return this.track.allPieces.length - this.getPieceRemovalUids(piece).length > 0;
+  }
+
+  createScrapChips(piece) {
+    return Array.from({ length: 2 }, () => {
+      this.scrapChipSerial += 1;
+      return {
+        uid: `chip-${this.scrapChipSerial}`,
+        sourceUid: piece.uid,
+        sourceId: piece.id,
+        sourceName: getSlotName(piece),
+        sourceUpgraded: Boolean(piece.upgraded),
+        color: getSlotColor(piece),
+      };
+    });
+  }
+
+  applyWreckPiece(uid) {
+    this.lastScrappedChipUids = [];
+    const piece = this.track.findPiece(uid);
+    if (this.storeOffer?.store.id !== "wrecker") {
+      return false;
+    }
+
+    if (this.storePicks <= 0) {
+      this.editorMessage = "No store picks left.";
+      return false;
+    }
+
+    if (!piece) {
+      this.editorMessage = "Missing bullet.";
+      return false;
+    }
+
+    if (!this.canWreckPiece(uid)) {
+      this.editorMessage = "That bullet cannot be scrapped.";
+      return false;
+    }
+
+    const chips = this.createScrapChips(piece);
+    this.lastScrappedChipUids = chips.map((chip) => chip.uid);
+    const scrappedName = getSlotName(piece);
+    const removedHostUids = this.getPieceRemovalUids(piece);
+    this.returnChipsForHosts(removedHostUids);
+    this.track.removePiece(uid);
+    this.scrapChips.push(...chips);
+    this.forgeCandidateUid = null;
+    this.wreckerCandidateUid = null;
+    this.storePicks = Math.max(0, this.storePicks - 1);
+
+    const remainingScrappable = this.getScrappablePieceCount();
+    this.storeOffer = {
+      ...this.storeOffer,
+      choices: [],
+      scrappableCount: remainingScrappable,
+    };
+    this.editorMessage = `Scrapped ${scrappedName} into 2 chips.`;
+
+    if (this.storePicks <= 0 || remainingScrappable === 0) {
+      const leftoverPicks = Math.max(0, this.storePicks);
+      this.bankedStorePicks += leftoverPicks;
+      this.pendingUpgrade = false;
+      this.storePicks = 0;
+      if (leftoverPicks > 0) {
+        this.editorMessage = `${leftoverPicks} unused pick${leftoverPicks === 1 ? "" : "s"} banked for the next store.`;
+      }
+    }
+
+    return true;
+  }
+
+  wreckPiece(uid) {
+    this.applyWreckPiece(uid);
+    this.showIntermission();
+  }
+
+  wreckCandidate() {
+    const uid = this.wreckerCandidateUid;
+    if (!uid) {
+      this.editorMessage = "Drop a bullet into the Wrecker slot first.";
+      this.showIntermission();
+      return;
+    }
+
+    const wreckerDrop = this.overlay.querySelector("[data-wrecker-drop]");
+    const source = this.overlay.querySelector("[data-wrecker-candidate-token]");
+    if (!wreckerDrop || !source) {
+      this.wreckPiece(uid);
+      return;
+    }
+
+    const snapshot = this.getForgeryUpgradeSnapshot(wreckerDrop, source);
+    this.animateWreckerScrap(uid, snapshot);
   }
 
   onPointerDown = (event) => {
@@ -869,7 +1441,7 @@ export class GameScene {
     }
 
     if (this.forgeryAnimating) {
-      this.editorMessage = "Forgery in progress.";
+      this.editorMessage = "Store animation in progress.";
       this.showIntermission();
       return;
     }
@@ -880,17 +1452,21 @@ export class GameScene {
       return;
     }
 
-    this.overlay.hidden = true;
+    this.intermissionView.hide();
     this.active = true;
     this.intermission = false;
     this.pendingUpgrade = false;
     this.choices = [];
     this.storeOffer = null;
     this.storePicks = 0;
+    this.forgeCandidateUid = null;
+    this.wreckerCandidateUid = null;
     this.enemies = [];
     this.effects = [];
     this.floaters = [];
     this.echoes = [];
+    this.pendingPiercingImpacts = [];
+    this.pendingAspectSpreads = [];
     this.waveKills = 0;
     this.visualWaveProgress = 0;
     this.waveClearOutro = false;
@@ -910,64 +1486,11 @@ export class GameScene {
     });
   }
 
-  getScrollableIntermissionNodes() {
-    if (!this.overlay) {
-      return [];
-    }
-
-    return [
-      ".upgrade-panel",
-      ".intermission-shell",
-      ".store-menu",
-      ".store-choice-list",
-      ".editor-tab",
-      ".debug-menu",
-    ].flatMap((selector) =>
-      [...this.overlay.querySelectorAll(selector)].map((node, index) => ({
-        selector,
-        index,
-        node,
-      })),
-    );
-  }
-
-  captureIntermissionScroll() {
-    return this.getScrollableIntermissionNodes().map(({ selector, index, node }) => ({
-      selector,
-      index,
-      top: node.scrollTop,
-      left: node.scrollLeft,
-    }));
-  }
-
-  restoreIntermissionScroll(scrollState) {
-    if (!scrollState?.length || !this.overlay) {
-      return;
-    }
-
-    const apply = () => {
-      scrollState.forEach(({ selector, index, top, left }) => {
-        const node = this.overlay.querySelectorAll(selector)[index];
-        if (node) {
-          node.scrollTop = top;
-          node.scrollLeft = left;
-        }
-      });
-    };
-
-    apply();
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(apply);
-    }
-  }
-
   showIntermission(isFirst = false) {
-    const scrollState = this.captureIntermissionScroll();
     this.active = false;
     this.intermission = true;
     this.suppressBeatBullets = true;
-    this.overlay.hidden = false;
-    this.overlay.innerHTML = renderIntermissionPanel({
+    this.intermissionView.renderIntermission({
       isFirst,
       waveIndex: this.waveIndex,
       track: this.track,
@@ -977,19 +1500,25 @@ export class GameScene {
       storePicks: this.storePicks,
       bankedStorePicks: this.bankedStorePicks,
       forgeCandidateUid: this.forgeCandidateUid,
+      wreckerCandidateUid: this.wreckerCandidateUid,
+      scrapChips: this.scrapChips,
       enemyDraft: this.pendingEnemyDraft
         ? {
             choices: this.enemyDraftChoices,
             unlocked: this.enemyPool,
+            aspectGrantors: this.aspectGrantors,
+            kind: this.enemyDraftChoices[0]?.kind ?? "enemy",
           }
         : null,
       message: this.editorMessage,
     });
-    this.restoreIntermissionScroll(scrollState);
   }
 
   placeSelectedAt(beat) {
     const result = this.track.movePieceToTrack(this.track.selectedUid, beat);
+    if (result.ok) {
+      this.returnInvalidChipPlacements();
+    }
     this.editorMessage = result.ok ? "" : result.reason;
     this.showIntermission();
   }
@@ -1021,11 +1550,13 @@ export class GameScene {
         currentSecond: this.runSeconds,
       });
     }
-    this.updateEchoes();
-    this.updateEnemies(dt);
-    this.updateElapse(dt);
+    this.updateEchoes(createEnemyFrameIndex(this.enemies));
+    this.updateEnemies(dt, createEnemyFrameIndex(this.enemies));
+    this.updateElapse(dt, createEnemyFrameIndex(this.enemies));
     this.updateEffects(dt);
+    this.processPendingPiercingImpacts();
     this.removeDeadEnemies();
+    this.processPendingAspectSpreads();
 
     if (this.health <= 0) {
       this.endRun();
@@ -1142,7 +1673,7 @@ export class GameScene {
     this.lastWholeBeat = whole;
   }
 
-  updateEchoes() {
+  updateEchoes(enemyIndex = createEnemyFrameIndex(this.enemies)) {
     const ready = this.echoes.filter((echo) => echo.fireBeat <= this.beat);
     this.echoes = this.echoes.filter((echo) => echo.fireBeat > this.beat);
 
@@ -1150,8 +1681,9 @@ export class GameScene {
       const events = resolveBulletShot({
         slot: echo.slot,
         lane: echo.lane,
-        enemies: this.enemies,
+        enemies: enemyIndex,
         currentBeat: this.beat,
+        targetBeat: this.beat,
         beatSeconds: this.beatSeconds,
         damageMultiplier: this.damageMultiplier() * 0.95,
         scheduleEcho: () => {},
@@ -1160,27 +1692,29 @@ export class GameScene {
     });
   }
 
-  updateEnemies(dt) {
+  updateEnemies(dt, enemyIndex = createEnemyFrameIndex(this.enemies)) {
     const laneBoosts = [1, 1, 1];
-    getLaneSpeedBoosts(this.enemies).forEach((boost) => {
+    getLaneSpeedBoosts(enemyIndex).forEach((boost) => {
       laneBoosts[boost.lane] = boost.amount;
     });
-    const speedMultipliers = getEnemySpeedMultipliers(this.enemies);
+    const speedMultipliers = getEnemySpeedMultipliers(enemyIndex);
 
     const dotEvents = [];
-    updateDamageOverTime(this.enemies, dt, this.beat, dotEvents);
+    updateDamageOverTime(enemyIndex, dt, this.beat, dotEvents);
     this.consumeCombatEvents(dotEvents, "dot");
 
     const movementDt = this.areEnemiesPaused() ? 0 : dt;
 
     this.enemies.forEach((enemy) => {
       if (enemy.leap && !enemy.targetable) {
-        updateLeapEnemy(enemy, this.enemies, this.beat);
+        updateLeapEnemy(enemy, enemyIndex, this.beat);
         return;
       }
 
       const elapseSlow = this.activeElapse?.slowMultiplier < 1 && enemy.id === this.activeElapse.targetId
         ? this.activeElapse.slowMultiplier
+        : this.activeElapse?.secondarySlowMultiplier < 1 && enemy.id === this.activeElapse.secondaryTargetId
+        ? this.activeElapse.secondarySlowMultiplier
         : 1;
       enemy.y += enemy.speed *
         laneBoosts[enemy.lane] *
@@ -1195,7 +1729,6 @@ export class GameScene {
           this.health -= 1;
           this.triggerShockwave();
         }
-        this.combo = Math.max(0, this.combo - 0.16);
         this.floaters.push({
           lane: enemy.lane,
           y: 0.92,
@@ -1209,8 +1742,24 @@ export class GameScene {
 
   updateEffects(dt) {
     this.effects = this.effects
-      .map((effect) => ({ ...effect, ttl: effect.ttl - dt }))
+      .map((effect) => {
+        const nextEffect = { ...effect, ttl: effect.ttl - dt };
+        if (nextEffect.kind === "aspectTrail") {
+          const target = this.enemies.find((enemy) => enemy.id === nextEffect.targetId);
+          if (target?.hp > 0) {
+            nextEffect.targetLane = target.lane;
+            nextEffect.targetY = target.visualY ?? target.y;
+          }
+        }
+
+        return nextEffect;
+      })
       .filter((effect) => effect.ttl > 0);
+    this.enemies.forEach((enemy) => {
+      if (enemy.flashTtl > 0) {
+        enemy.flashTtl = Math.max(0, enemy.flashTtl - dt);
+      }
+    });
     this.floaters = this.floaters
       .map((floater) => ({ ...floater, ttl: floater.ttl - dt, y: floater.y - dt * 0.08 }))
       .filter((floater) => floater.ttl > 0);
@@ -1237,18 +1786,54 @@ export class GameScene {
 
     enemy.aspectSpread = true;
     const aspect = getAspectForSource(enemy.aspectGrantor);
-    const affected = grantAspectToBasics(this.enemies, enemy.aspectGrantor, 4);
+    if (!aspect) {
+      return;
+    }
+
+    const arrivalBeat = nextHalfBeatAfter(this.beat);
+    const duration = Math.max(0.08, (arrivalBeat - this.beat) * this.beatSeconds);
+    const sourceY = enemy.visualY ?? enemy.y;
+    const affected = pickAspectSpreadTargets(this.enemies, ASPECT_SPREAD_TARGET_COUNT);
     affected.forEach((basic) => {
-      this.effects.push({
-        kind: "ring",
-        lane: basic.lane,
-        y: basic.visualY ?? basic.y,
-        color: aspect.color,
-        radius: 14,
-        growth: 24,
-        ttl: 0.34,
-        duration: 0.34,
+      this.pendingAspectSpreads.push({
+        arrivalBeat,
+        targetId: basic.id,
+        sourceType: enemy.aspectGrantor,
       });
+      this.effects.push({
+        kind: "aspectTrail",
+        sourceLane: enemy.lane,
+        sourceY,
+        targetId: basic.id,
+        targetLane: basic.lane,
+        targetY: basic.visualY ?? basic.y,
+        color: aspect.color,
+        ttl: duration,
+        duration,
+      });
+    });
+  }
+
+  processPendingAspectSpreads() {
+    if (this.pendingAspectSpreads.length === 0) {
+      return;
+    }
+
+    const ready = [];
+    this.pendingAspectSpreads = this.pendingAspectSpreads.filter((spread) => {
+      if (spread.arrivalBeat <= this.beat) {
+        ready.push(spread);
+        return false;
+      }
+
+      return true;
+    });
+
+    ready.forEach((spread) => {
+      const target = this.enemies.find((enemy) => enemy.id === spread.targetId);
+      if (target) {
+        applyAspectToBasic(target, spread.sourceType);
+      }
     });
   }
 
@@ -1298,7 +1883,7 @@ export class GameScene {
     }];
   }
 
-  startElapseBeam(lane, shot, timing, damageMultiplier) {
+  startElapseBeam(lane, shot, timing, damageMultiplier, enemyIndex = createEnemyFrameIndex(this.enemies)) {
     const rightPlacement = this.getElapseRightPlacement(shot.entry);
     if (!shot.entry.elapseActive || !rightPlacement) {
       this.applyTimingResult(lane, timing, shot.targetBeat, shot.entry.color, shot.shouldAdvance);
@@ -1315,8 +1900,12 @@ export class GameScene {
 
     const start = resolveElapseStart({
       lane,
-      enemies: this.enemies,
+      enemies: enemyIndex,
       currentBeat: this.beat,
+      beatSeconds: this.beatSeconds,
+      damageMultiplier,
+      chipEffects: this.getCombatChipsForSlot(shot.entry.uid),
+      upgraded: shot.entry.upgraded || rightPlacement.upgraded,
     });
     this.consumeCombatEvents(start.events, timing.label);
     this.activeElapse = {
@@ -1325,8 +1914,12 @@ export class GameScene {
       rightUid: rightPlacement.uid,
       rightTargetBeat: shot.targetBeat + (rightPlacement.beat - shot.entry.beat),
       targetId: start.targetId,
+      guardId: start.guardId,
       damageMultiplier,
       slowMultiplier: shot.entry.upgraded || rightPlacement.upgraded ? 0.7 : 1,
+      secondaryTargetId: start.secondaryTargetId,
+      secondaryDamagePerBeat: start.secondaryDamagePerBeat,
+      secondarySlowMultiplier: start.secondarySlowMultiplier,
       color: shot.entry.color,
       observedUid: null,
       observedTargetBeat: null,
@@ -1335,17 +1928,22 @@ export class GameScene {
     this.finishShotProgress(shot);
   }
 
-  finishElapseBeam({ lane, weak, timing, targetBeat, shouldAdvance = false }) {
+  finishElapseBeam(
+    { lane, weak, timing, targetBeat, shouldAdvance = false },
+    enemyIndex = createEnemyFrameIndex(this.enemies),
+  ) {
     if (!this.activeElapse) {
       return;
     }
 
     const events = resolveElapseFinish({
       lane,
-      enemies: this.enemies,
+      enemies: enemyIndex,
       currentBeat: this.beat,
       damageMultiplier: this.damageMultiplier() * timing.damageFactor,
       weak,
+      chipEffects: this.getCombatChipsForSlot(this.activeElapse.rightUid),
+      beatSeconds: this.beatSeconds,
     });
     this.consumeCombatEvents(events, weak ? "weak" : timing.label);
     this.applyTimingResult(lane, timing, targetBeat, this.activeElapse.color, !weak && shouldAdvance);
@@ -1436,7 +2034,7 @@ export class GameScene {
     this.lastShotAt = this.beat;
   }
 
-  updateElapse(dt) {
+  updateElapse(dt, enemyIndex = createEnemyFrameIndex(this.enemies)) {
     if (!this.activeElapse) {
       return;
     }
@@ -1465,13 +2063,15 @@ export class GameScene {
 
     const result = updateElapseBeamDamage({
       beam: this.activeElapse,
-      enemies: this.enemies,
+      enemies: enemyIndex,
       dt,
       currentBeat: this.beat,
       beatSeconds: this.beatSeconds,
       damageMultiplier: this.activeElapse.damageMultiplier,
     });
     this.activeElapse.targetId = result.targetId;
+    this.activeElapse.guardId = result.guardId;
+    this.activeElapse.secondaryTargetId = result.secondaryTargetId;
     this.consumeCombatEvents(result.events, "dot");
   }
 
@@ -1507,9 +2107,10 @@ export class GameScene {
 
     const timing = rateTiming(shot.delta);
     const multiplier = this.damageMultiplier() * timing.damageFactor;
+    const enemyIndex = createEnemyFrameIndex(this.enemies);
     if (isElapsePiece(shot.entry)) {
       if (getElapseHalf(shot.entry) === "left") {
-        this.startElapseBeam(lane, shot, timing, multiplier);
+        this.startElapseBeam(lane, shot, timing, multiplier, enemyIndex);
         return;
       }
 
@@ -1520,7 +2121,7 @@ export class GameScene {
           timing,
           targetBeat: shot.targetBeat,
           shouldAdvance: shot.shouldAdvance,
-        });
+        }, enemyIndex);
         this.finishShotProgress(shot);
         return;
       }
@@ -1546,11 +2147,13 @@ export class GameScene {
     const events = resolveBulletShot({
       slot: shot.entry.slot,
       lane,
-      enemies: this.enemies,
+      enemies: enemyIndex,
       currentBeat: this.beat,
+      targetBeat: shot.targetBeat,
       echoAnchorBeat: shot.shouldAdvance ? shot.targetBeat : this.beat,
       beatSeconds: this.beatSeconds,
       damageMultiplier: multiplier,
+      chipEffects: this.getCombatChipsForSlot(shot.entry.uid),
       scheduleEcho: (echo) => this.echoes.push(echo),
     });
 
@@ -1581,26 +2184,12 @@ export class GameScene {
   }
 
   enemyHealthMultiplier() {
-    return 1.25 ** this.enemyHealthTier();
+    return 1.15 ** this.enemyHealthTier();
   }
 
   enemyHealthTier() {
     const specialAdditions = Math.max(0, this.enemyPool.length - 1);
     return Math.floor(specialAdditions / 2);
-  }
-
-  unlockAspectGrantor() {
-    const candidates = this.enemyPool.filter((type) =>
-      type !== "basic" &&
-      getAspectForSource(type) &&
-      !this.aspectGrantors.includes(type)
-    );
-    const [grantor] = pickRandom(candidates, 1);
-    if (grantor) {
-      this.aspectGrantors.push(grantor);
-    }
-
-    return grantor ?? null;
   }
 
   skipStore() {
@@ -1609,6 +2198,7 @@ export class GameScene {
     }
 
     this.forgeCandidateUid = null;
+    this.wreckerCandidateUid = null;
     this.bankedStorePicks += Math.max(1, this.storePicks);
     this.storePicks = 0;
     this.pendingUpgrade = false;
@@ -1616,20 +2206,25 @@ export class GameScene {
     this.showIntermission();
   }
 
-  chooseEnemyType(type) {
-    if (!this.pendingEnemyDraft || !this.enemyDraftChoices.some((choice) => choice.type === type)) {
+  chooseEnemyType(type, kind = null) {
+    const choice = this.enemyDraftChoices.find((draftChoice) =>
+      draftChoice.type === type &&
+      (!kind || draftChoice.kind === kind)
+    );
+    if (!this.pendingEnemyDraft || !choice) {
       return;
     }
 
-    const previousHealthTier = this.enemyHealthTier();
+    if (choice.kind === "aspect") {
+      this.chooseAspectGrantor(type);
+      return;
+    }
+
     if (!this.enemyPool.includes(type)) {
       this.enemyPool.push(type);
     }
-    const newHealthTier = this.enemyHealthTier();
 
     const def = getEnemyDef(type);
-    const grantor = newHealthTier > previousHealthTier ? this.unlockAspectGrantor() : null;
-    const aspect = getAspectForSource(grantor);
     this.pendingEnemyDraft = false;
     this.enemyDraftChoices = [];
     this.storeOffer = null;
@@ -1637,11 +2232,33 @@ export class GameScene {
     this.storePicks = 0;
     this.pendingUpgrade = false;
     this.forgeCandidateUid = null;
-    this.editorMessage = `${def.name} added to the spawn pool.${
-      grantor && aspect
-        ? ` ${getEnemyDef(grantor).name} now grants ${aspect.name} to basics.`
-        : ""
-    }`;
+    this.wreckerCandidateUid = null;
+    this.editorMessage = `${def.name} added to the spawn pool.`;
+    this.showIntermission();
+  }
+
+  chooseAspectGrantor(type) {
+    const aspect = getAspectForSource(type);
+    if (!aspect) {
+      this.editorMessage = "That special has no spreading aspect.";
+      this.showIntermission();
+      return;
+    }
+
+    if (!this.aspectGrantors.includes(type)) {
+      this.aspectGrantors.push(type);
+    }
+
+    const def = getEnemyDef(type);
+    this.pendingEnemyDraft = false;
+    this.enemyDraftChoices = [];
+    this.storeOffer = null;
+    this.choices = [];
+    this.storePicks = 0;
+    this.pendingUpgrade = false;
+    this.forgeCandidateUid = null;
+    this.wreckerCandidateUid = null;
+    this.editorMessage = `All ${def.name}s now spread ${aspect.name} to nearby basics when killed.`;
     this.showIntermission();
   }
 
@@ -1649,6 +2266,7 @@ export class GameScene {
     this.storePicks = this.bankedStorePicks + 1;
     this.bankedStorePicks = 0;
     this.forgeCandidateUid = null;
+    this.wreckerCandidateUid = null;
     this.storeOffer = createStoreOffer(this.track, {
       ...this.getRunState(),
       storeCycleIndex: this.shopCycleIndex,
@@ -1664,83 +2282,86 @@ export class GameScene {
 
   flashBeatBar(isCorrect, targetBeat, color) {
     this.beatFlashKind = isCorrect ? "good" : "bad";
-    this.beatFlashTtl = 0.18;
+    this.beatFlashTtl = BEAT_FLASH_SECONDS;
     this.beatBursts.push({
       offset: markerOffsetPercent(targetBeat - this.beat),
       color,
       isBeat: isOnBeat(targetBeat),
-      ttl: 0.24,
+      ttl: BEAT_BURST_SECONDS,
+    });
+  }
+
+  queuePiercingImpacts(event, label) {
+    const beatDelay = Number.isFinite(event.stageDelaySeconds)
+      ? event.stageDelaySeconds / this.beatSeconds
+      : 0;
+    (event.impacts ?? []).forEach((impact, index) => {
+      const stageIndex = Number.isFinite(impact.stageIndex) ? impact.stageIndex : index;
+      this.pendingPiercingImpacts.push({
+        arrivalBeat: this.beat + beatDelay * stageIndex,
+        impact,
+        label,
+      });
+    });
+  }
+
+  processPendingPiercingImpacts() {
+    if (this.pendingPiercingImpacts.length === 0) {
+      return;
+    }
+
+    const ready = [];
+    this.pendingPiercingImpacts = this.pendingPiercingImpacts.filter((queued) => {
+      if (queued.arrivalBeat <= this.beat) {
+        ready.push(queued);
+        return false;
+      }
+
+      return true;
+    });
+
+    ready.forEach((queued) => {
+      const events = resolvePiercingImpact({
+        impact: queued.impact,
+        enemies: this.enemies,
+        currentBeat: this.beat,
+      });
+      appendCombatEvents({
+        events,
+        label: queued.label,
+        enemies: this.enemies,
+        effects: this.effects,
+        floaters: this.floaters,
+      });
     });
   }
 
   consumeCombatEvents(events, label) {
-    events.forEach((event) => {
-      if (event.kind === "projectile") {
-        this.effects.push({
-          kind: "projectile",
-          lane: event.lane,
-          color: event.color,
-          ttl: event.secondary ? 0.18 : 0.25,
-          secondary: event.secondary,
-          endY: event.endY ?? 0.04,
-          width: event.width,
-        });
+    const visibleEvents = events.map((event) => {
+      if (event.kind !== "piercingProjectile") {
+        return event;
       }
 
-      if (event.kind === "horizontalBar") {
-        this.effects.push({
-          kind: "horizontalBar",
-          color: event.color,
-          y: event.y,
-          radius: event.radius,
-          ttl: 0.22,
-        });
-      }
-
-      if (event.kind === "phase") {
-        this.effects.push({
-          kind: "phaseBurst",
-          lane: event.lane,
-          y: event.y,
-          color: event.color,
-          ttl: 0.26,
-          duration: 0.26,
-        });
-      }
-
-      if (event.kind === "slash") {
-        const visualEnemy = this.enemies.find(
-          (enemy) => enemy.lane === event.lane && Math.abs(enemy.y - event.y) < 0.001,
-        );
-        this.effects.push({
-          kind: "slash",
-          lane: event.lane,
-          y: visualEnemy?.visualY ?? event.y,
-          rotation: event.rotation,
-          color: event.color,
-          ttl: 0.2,
-          duration: 0.2,
-        });
-      }
-
-      if (event.kind === "hit" || event.kind === "guard") {
-        const visualEnemy = this.enemies.find(
-          (enemy) => enemy.lane === event.lane && Math.abs(enemy.y - event.y) < 0.001,
-        );
-        this.floaters.push({
-          lane: event.lane,
-          y: visualEnemy?.visualY ?? event.y,
-          text: event.text,
-          color: event.color,
-          ttl: label === "dot" ? 0.18 : 0.55,
-        });
-      }
+      this.queuePiercingImpacts(event, label);
+      const { impacts, ...visibleEvent } = event;
+      return visibleEvent;
     });
+
+    appendCombatEvents({
+      events: visibleEvents,
+      label,
+      enemies: this.enemies,
+      effects: this.effects,
+      floaters: this.floaters,
+    });
+    this.processPendingPiercingImpacts();
   }
 
   clearWave() {
     this.waveRunner.finish();
     this.activeElapse = null;
+    this.pendingPiercingImpacts = [];
+    this.pendingAspectSpreads = [];
     this.score += 260 + this.waveIndex * 40;
     this.waveIndex += 1;
     this.visualWaveProgress = 0;
@@ -1752,9 +2373,9 @@ export class GameScene {
     if (this.waveIndex >= 3) {
       this.beatSeconds = Math.max(0.82, 1 - (this.waveIndex - 2) * 0.025);
     }
-    if (shouldDraftEnemy(this.waveIndex, this.enemyPool)) {
+    if (shouldDraftEnemy(this.waveIndex, this.enemyPool, this.aspectGrantors)) {
       this.pendingEnemyDraft = true;
-      this.enemyDraftChoices = createEnemyDraftChoices(this.enemyPool);
+      this.enemyDraftChoices = createEnemyDraftChoices(this.enemyPool, this.aspectGrantors);
       this.storeOffer = null;
       this.choices = [];
       this.storePicks = 0;
@@ -1767,8 +2388,9 @@ export class GameScene {
 
   endRun() {
     this.active = false;
-    this.overlay.hidden = false;
-    this.overlay.innerHTML = renderGameOverPanel(this.score, this.waveIndex);
+    this.pendingPiercingImpacts = [];
+    this.pendingAspectSpreads = [];
+    this.intermissionView.renderGameOver(this.score, this.waveIndex);
   }
 
   updateHud() {
@@ -1861,6 +2483,7 @@ export class GameScene {
   }
 
   render() {
+    const enemyIndex = createEnemyFrameIndex(this.enemies);
     this.renderer?.render({
       enemies: this.enemies,
       effects: this.effects,
@@ -1868,14 +2491,17 @@ export class GameScene {
       track: this.track,
       beat: this.beat,
       spawnWarnings: this.waveRunner.getSpawnWarnings(this.beat),
-      speedBoosts: getLaneSpeedBoosts(this.enemies),
+      speedBoosts: getLaneSpeedBoosts(enemyIndex),
       activeBeams: this.getElapseBeamView(),
+      comboMultiplier: this.damageMultiplier(),
+      comboCap: this.comboCap,
     });
   }
 
   destroy() {
     this.resizeObserver?.disconnect();
     this.el?.removeEventListener("click", this.onClick);
+    this.el?.removeEventListener("contextmenu", this.onContextMenu);
     this.overlay?.removeEventListener("dragstart", this.onDragStart);
     this.overlay?.removeEventListener("dragover", this.onDragOver);
     this.overlay?.removeEventListener("drop", this.onDrop);

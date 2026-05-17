@@ -1,7 +1,18 @@
 import { getAspectDef, getAspectForSource } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
+import {
+  LANES,
+  LEAP_LANDING_OFFSET,
+  LEAP_MAX_LANDING_Y,
+  LEAP_MIN_TARGET_Y,
+} from "../config/gameplay.js";
 import { clamp } from "../utils/math.js";
 import { pickRandom } from "../utils/random.js";
+import { isTargetable, toEnemyFrameIndex } from "./enemyFrameIndex.js";
+
+function nextWholeBeatAfter(beat) {
+  return Math.floor(beat) + 1;
+}
 
 function pushHealEffect(enemy, color, effects, floaters) {
   effects.push({
@@ -75,59 +86,93 @@ export function applyAspectToBasic(enemy, sourceType) {
 }
 
 export function grantAspectToBasics(enemies, sourceType, count = 4) {
-  const candidates = enemies.filter((enemy) =>
+  return pickAspectSpreadTargets(enemies, count).filter((enemy) => applyAspectToBasic(enemy, sourceType));
+}
+
+export function pickAspectSpreadTargets(enemies, count = 4) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  const candidates = enemyIndex.enemies.filter((enemy) =>
     enemy.type === "basic" &&
     enemy.hp > 0 &&
     !enemy.aspect
   );
 
-  return pickRandom(candidates, count).filter((enemy) => applyAspectToBasic(enemy, sourceType));
+  return pickRandom(candidates, count);
 }
 
-export function findLeapRetarget(enemy, enemies, previousTargetY) {
-  return enemies
+export function findLeapRetarget(enemy, enemies) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  const candidates = enemyIndex
+    .targetableInLane(enemy.lane)
     .filter((candidate) =>
       candidate.id !== enemy.id &&
-      candidate.hp > 0 &&
-      candidate.targetable !== false &&
       candidate.type !== "leap" &&
-      candidate.lane === enemy.lane &&
-      candidate.y < previousTargetY
-    )
-    .sort((a, b) => b.y - a.y)[0] ?? null;
+      candidate.y >= LEAP_MIN_TARGET_Y
+    );
+  return candidates[0] ?? null;
+}
+
+function readjustLeapArc(enemy, beat) {
+  const leap = enemy.leap;
+  leap.startY = enemy.y;
+  leap.startBeat = beat;
+  leap.landBeat = nextWholeBeatAfter(Math.max(beat, leap.landBeat));
+  leap.arcSide *= -1;
+}
+
+function setLeapTarget(enemy, target, beat) {
+  const leap = enemy.leap;
+  const previousTargetId = leap.targetId;
+  leap.targetId = target.id;
+  leap.targetY = target.y;
+  leap.destinationY = null;
+
+  if (previousTargetId !== target.id) {
+    readjustLeapArc(enemy, beat);
+  }
+}
+
+function setLeapFallback(enemy, beat) {
+  const leap = enemy.leap;
+  if (leap.targetId === null && leap.destinationY === LEAP_MIN_TARGET_Y) {
+    return;
+  }
+
+  leap.targetId = null;
+  leap.targetY = LEAP_MIN_TARGET_Y;
+  leap.destinationY = LEAP_MIN_TARGET_Y;
+  readjustLeapArc(enemy, beat);
 }
 
 export function updateLeapEnemy(enemy, enemies, beat) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
   const leap = enemy.leap;
-  const target = enemies.find((candidate) => candidate.id === leap.targetId);
+  const target = enemyIndex.findById(leap.targetId);
 
   if (target?.hp > 0) {
-    leap.targetY = target.y;
-    leap.destinationY = null;
-    leap.retargetedAfterDeath = false;
-  } else if (!leap.retargetedAfterDeath) {
+    if (target.y < LEAP_MIN_TARGET_Y) {
+      setLeapFallback(enemy, beat);
+    } else {
+      leap.targetY = target.y;
+      leap.destinationY = null;
+    }
+  } else if (leap.targetId !== null) {
     const lastTargetY = target?.y ?? leap.targetY;
     if (Number.isFinite(lastTargetY)) {
       leap.targetY = lastTargetY;
     }
 
-    if ((leap.targetY ?? 0) >= 0.5) {
-      const nextTarget = findLeapRetarget(enemy, enemies, leap.targetY);
-      if (nextTarget) {
-        leap.targetId = nextTarget.id;
-        leap.targetY = nextTarget.y;
-        leap.destinationY = null;
-        leap.retargetedAfterDeath = false;
-      } else {
-        leap.destinationY = 0.5;
-        leap.retargetedAfterDeath = true;
-      }
+    const nextTarget = findLeapRetarget(enemy, enemyIndex);
+    if (nextTarget) {
+      setLeapTarget(enemy, nextTarget, beat);
+    } else {
+      setLeapFallback(enemy, beat);
     }
   }
 
   const destinationY = Number.isFinite(leap.destinationY)
     ? leap.destinationY
-    : clamp((leap.targetY ?? 0.35) + 0.07, 0.12, 0.88);
+    : clamp((leap.targetY ?? LEAP_MIN_TARGET_Y) + LEAP_LANDING_OFFSET, LEAP_MIN_TARGET_Y, LEAP_MAX_LANDING_Y);
   const progress = clamp(
     (beat - leap.startBeat) / Math.max(0.001, leap.landBeat - leap.startBeat),
     0,
@@ -149,12 +194,11 @@ export function updateLeapEnemy(enemy, enemies, beat) {
 }
 
 export function getLaneSpeedBoosts(enemies) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
   const boosts = [];
 
-  for (let lane = 0; lane < 3; lane += 1) {
-    const front = enemies
-      .filter((enemy) => enemy.lane === lane && enemy.hp > 0)
-      .sort((a, b) => b.y - a.y)[0];
+  for (const lane of LANES) {
+    const front = enemyIndex.frontLiveInLane(lane);
     const def = front ? getEnemyDef(front.type) : null;
 
     if (def?.laneSpeedBoost) {
@@ -170,22 +214,19 @@ export function getLaneSpeedBoosts(enemies) {
 }
 
 export function getEnemySpeedMultipliers(enemies) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
   const multipliers = new Map();
-  const joyBasics = enemies.filter((enemy) => enemy.type === "basic" && enemy.aspect === "joy" && enemy.hp > 0);
+  const joyBasics = enemyIndex.enemies.filter((enemy) =>
+    enemy.type === "basic" &&
+    enemy.aspect === "joy" &&
+    enemy.hp > 0
+  );
 
   joyBasics.forEach((joy) => {
     const aspect = getAspectDef("joy");
-    const target = enemies
-      .filter((enemy) =>
-        enemy.id !== joy.id &&
-        enemy.hp > 0 &&
-        enemy.targetable !== false &&
-        enemy.lane === joy.lane &&
-        enemy.y > joy.y
-      )
-      .sort((a, b) => a.y - b.y)[0];
+    const target = enemyIndex.closestAheadInLane(joy.lane, joy.y, joy.id);
 
-    if (target) {
+    if (target && isTargetable(target)) {
       multipliers.set(target.id, Math.max(multipliers.get(target.id) ?? 1, aspect.speedBoost));
     }
   });

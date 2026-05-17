@@ -3,13 +3,24 @@ import { getAspectForSource } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
 import { tryActivateEnemySpawnPattern } from "./enemySpawnPatterns.js";
 import { createProceduralWave } from "./proceduralWaves.js";
-import { EPSILON, nextHalfBeatAfter } from "../utils/beatMath.js";
+import {
+  EPSILON,
+  nextBetweenHalfBeatAfter,
+  nextBetweenHalfBeatAtOrAfter,
+} from "../utils/beatMath.js";
+import {
+  LANE_COUNT,
+  LANES,
+  LEAP_AIR_BEATS,
+  LEAP_FIELD_COOLDOWN_SECONDS,
+} from "../config/gameplay.js";
+import { toEnemyFrameIndex } from "./enemyFrameIndex.js";
 import { randomInt } from "../utils/random.js";
 
 let enemyId = 0;
 
 function randomLane() {
-  return randomInt(3);
+  return randomInt(LANE_COUNT);
 }
 
 function resolveScheduleLane(rule, lastLane) {
@@ -25,27 +36,26 @@ function resolveScheduleLane(rule, lastLane) {
 }
 
 function liveEnemies(enemies) {
-  return enemies.filter((enemy) => enemy.hp > 0);
+  return toEnemyFrameIndex(enemies).liveEnemies();
+}
+
+function resolveSpawnBeat(spawn) {
+  return spawn.lockedBeat
+    ? spawn.beat
+    : nextBetweenHalfBeatAtOrAfter(spawn.beat);
 }
 
 function leapTargets(enemies) {
-  return liveEnemies(enemies).filter((enemy) =>
-    enemy.targetable !== false &&
-    enemy.type !== "leap"
-  );
+  return toEnemyFrameIndex(enemies).leapTargets();
 }
 
 function countLiveByLane(enemies) {
-  const counts = [0, 0, 0];
-  liveEnemies(enemies).forEach((enemy) => {
-    counts[enemy.lane] += 1;
-  });
-  return counts;
+  return toEnemyFrameIndex(enemies).liveCountsByLane();
 }
 
 function laneWithMostLive(enemies, blockedLanes) {
   const counts = countLiveByLane(enemies);
-  const lanes = [0, 1, 2]
+  const lanes = LANES
     .filter((lane) => !blockedLanes.has(lane))
     .sort((a, b) => counts[b] - counts[a]);
   return lanes[0] ?? randomLane();
@@ -57,6 +67,10 @@ function getWaveDefinition(waveIndex, options = {}) {
   }
 
   return createProceduralWave(waveIndex, options);
+}
+
+function spreadGrantorFor(type, aspectGrantors = []) {
+  return aspectGrantors.includes(type) && getAspectForSource(type) ? type : null;
 }
 
 export class WaveRunner {
@@ -86,6 +100,7 @@ export class WaveRunner {
     this.patterns = (this.wave.patterns ?? []).map((pattern, index) => ({
       ...pattern,
       id: pattern.id ?? `${pattern.pattern}:${index}`,
+      aspectGrantor: spreadGrantorFor(pattern.type, this.aspectGrantors),
       done: false,
     })).sort((a, b) => (a.earliestBeat ?? 0) - (b.earliestBeat ?? 0));
     this.spawnSchedule = this.prepareSpawnSchedule(this.wave.spawns);
@@ -99,7 +114,9 @@ export class WaveRunner {
       lastLane = lane;
       return {
         ...spawn,
+        beat: resolveSpawnBeat(spawn),
         lane,
+        aspectGrantor: spreadGrantorFor(spawn.type, this.aspectGrantors) ?? spawn.aspectGrantor,
         color: getEnemyDef(spawn.type).color,
       };
     }).sort((a, b) => a.beat - b.beat);
@@ -137,6 +154,18 @@ export class WaveRunner {
       .some((spawn) => spawn.type === "leap");
   }
 
+  getReservedLeapTargetIds(enemies) {
+    const reserved = new Set();
+    this.spawnSchedule
+      .slice(this.spawnIndex)
+      .filter((spawn) => spawn.type === "leap" && Number.isFinite(spawn.leapTargetId))
+      .forEach((spawn) => reserved.add(spawn.leapTargetId));
+    liveEnemies(enemies)
+      .filter((enemy) => enemy.type === "leap" && enemy.leap && Number.isFinite(enemy.leap.targetId))
+      .forEach((enemy) => reserved.add(enemy.leap.targetId));
+    return reserved;
+  }
+
   hasPendingBarrierInLane(lane) {
     return this.spawnSchedule
       .slice(this.spawnIndex)
@@ -157,7 +186,7 @@ export class WaveRunner {
       .filter((enemy) => enemy.type === "barrier")
       .forEach((enemy) => blocked.add(enemy.lane));
 
-    for (let lane = 0; lane < 3; lane += 1) {
+    for (const lane of LANES) {
       if (
         this.hasPendingBarrierInLane(lane) ||
         currentSecond - this.lastBarrierLaneSeconds[lane] < 3
@@ -180,11 +209,12 @@ export class WaveRunner {
       const leapSeatAvailable =
         pattern.pattern === "leapAmbush" &&
         !this.hasPendingLeapSpawn() &&
-        currentSecond - this.lastLeapFieldSecond >= 3;
+        currentSecond - this.lastLeapFieldSecond >= LEAP_FIELD_COOLDOWN_SECONDS;
       const result = tryActivateEnemySpawnPattern(pattern, {
         localBeat,
         enemies,
         leapSeatAvailable,
+        reservedLeapTargetIds: this.getReservedLeapTargetIds(enemies),
         blockedBarrierLanes:
           pattern.pattern === "crowdedBarrier"
             ? this.getBarrierBlockedLanes(currentSecond, enemies)
@@ -195,6 +225,9 @@ export class WaveRunner {
         pattern.done = true;
         if (Number.isFinite(result.blockLaneUntilBeat)) {
           pattern.blockLaneUntilBeat = result.blockLaneUntilBeat;
+        }
+        if (Number.isInteger(result.blockLane)) {
+          pattern.blockLane = result.blockLane;
         }
         return;
       }
@@ -208,12 +241,12 @@ export class WaveRunner {
   getBlockedLaneMap(localBeat) {
     const blocked = new Map();
     this.patterns.forEach((pattern) => {
-      if (pattern.pattern !== "emptyLaneGhost" || !Number.isInteger(pattern.lane)) {
+      if (pattern.pattern !== "emptyLaneGhost") {
         return;
       }
 
-      if (!pattern.done && localBeat >= pattern.earliestBeat - EPSILON) {
-        blocked.set(pattern.lane, Infinity);
+      const lane = Number.isInteger(pattern.blockLane) ? pattern.blockLane : pattern.lane;
+      if (!Number.isInteger(lane)) {
         return;
       }
 
@@ -222,8 +255,8 @@ export class WaveRunner {
         Number.isFinite(pattern.blockLaneUntilBeat) &&
         localBeat < pattern.blockLaneUntilBeat - EPSILON
       ) {
-        blocked.set(pattern.lane, Math.max(
-          blocked.get(pattern.lane) ?? 0,
+        blocked.set(lane, Math.max(
+          blocked.get(lane) ?? 0,
           pattern.blockLaneUntilBeat,
         ));
       }
@@ -255,7 +288,7 @@ export class WaveRunner {
       changed = true;
       return {
         ...spawn,
-        beat: nextHalfBeatAfter(Number.isFinite(blockUntil) ? blockUntil : localBeat),
+        beat: nextBetweenHalfBeatAfter(Number.isFinite(blockUntil) ? blockUntil : localBeat),
       };
     });
 
@@ -289,7 +322,7 @@ export class WaveRunner {
 
     const blockedLanes = this.getBlockedLaneMap(localBeat);
     const barrierBlockedLanes = new Set(this.getBarrierBlockedLanes(currentSecond, enemies));
-    const lanes = [0, 1, 2].filter((lane) =>
+    const lanes = LANES.filter((lane) =>
       !blockedLanes.has(lane) &&
       (!needsBarrierSeed || !barrierBlockedLanes.has(lane))
     );
@@ -299,7 +332,7 @@ export class WaveRunner {
         ? lanes[randomInt(lanes.length)]
         : randomLane();
     this.queueSpawns([{
-      beat: nextHalfBeatAfter(localBeat),
+      beat: nextBetweenHalfBeatAfter(localBeat),
       type: "basic",
       lane,
     }]);
@@ -312,21 +345,22 @@ export class WaveRunner {
 
     const localBeat = currentBeat - this.startBeat;
     const currentSecond = options.currentSecond ?? currentBeat;
-    if (liveEnemies(enemies).some((enemy) => enemy.type === "leap")) {
+    const enemyIndex = toEnemyFrameIndex(enemies);
+    if (liveEnemies(enemyIndex).some((enemy) => enemy.type === "leap")) {
       this.lastLeapFieldSecond = currentSecond;
     }
-    this.updateRecentBarrierLanes(enemies, currentSecond);
-    const hasEnemies = liveEnemies(enemies).length > 0;
-    this.queueReadyPatterns(localBeat, enemies, { currentSecond });
+    this.updateRecentBarrierLanes(enemyIndex, currentSecond);
+    const hasEnemies = liveEnemies(enemyIndex).length > 0;
+    this.queueReadyPatterns(localBeat, enemyIndex, { currentSecond });
     this.deferBlockedSpawns(localBeat);
-    this.ensurePendingPatternSeed(localBeat, enemies, currentSecond);
+    this.ensurePendingPatternSeed(localBeat, enemyIndex, currentSecond);
 
     if (!hasEnemies && this.spawnIndex < this.spawnSchedule.length) {
       const nextSpawn = this.spawnSchedule[this.spawnIndex];
       if (nextSpawn.lockedBeat) {
         this.hurrySpawnBeat = null;
       } else if (nextSpawn.beat > localBeat + EPSILON && !Number.isFinite(this.hurrySpawnBeat)) {
-        this.hurrySpawnBeat = nextHalfBeatAfter(localBeat);
+        this.hurrySpawnBeat = nextBetweenHalfBeatAfter(localBeat);
       }
     } else {
       this.hurrySpawnBeat = null;
@@ -387,7 +421,7 @@ export class WaveRunner {
   }
 
   getProgress(kills = 0, enemies = []) {
-    const alive = enemies.filter((enemy) => enemy.hp > 0).length;
+    const alive = toEnemyFrameIndex(enemies).liveCount();
     const total = Math.max(
       kills + alive,
       this.spawnSchedule.length,
@@ -409,7 +443,7 @@ export class WaveRunner {
       this.active &&
       this.spawnIndex >= this.spawnSchedule.length &&
       this.patterns.every((pattern) => pattern.done) &&
-      enemies.every((enemy) => enemy.hp <= 0)
+      toEnemyFrameIndex(enemies).liveCount() === 0
     );
   }
 
@@ -445,7 +479,7 @@ export function createEnemy(type, lane, options = {}) {
     lastInterceptBeat: -999,
   };
 
-  if ((options.aspectGrantors ?? []).includes(type) && getAspectForSource(type)) {
+  if (options.spawn?.aspectGrantor === type && getAspectForSource(type)) {
     enemy.aspectGrantor = type;
   }
 
@@ -458,7 +492,7 @@ export function createEnemy(type, lane, options = {}) {
       targetId: options.spawn.leapTargetId,
       targetY: options.spawn.leapTargetY,
       startBeat,
-      landBeat: startBeat + 2,
+      landBeat: startBeat + LEAP_AIR_BEATS,
       startY: 0.02,
       arcSide: enemyId % 2 === 0 ? 1 : -1,
     };

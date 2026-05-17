@@ -25,14 +25,14 @@ export const ASPECT_DEFS = {
   hero: {
     id: "hero",
     source: "barrier",
-    name: "Hero",
+    name: "Heroism",
     color: ENEMY_DEFS.barrier.color,
     interceptFraction: 0.2,
   },
   embrace: {
     id: "embrace",
     source: "leap",
-    name: "Embrace",
+    name: "Dexterity",
     color: ENEMY_DEFS.leap.color,
     forwardBoost: 0.12,
   },

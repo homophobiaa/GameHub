@@ -3,35 +3,45 @@ import { resolveBulletHandler } from "./bulletHandlers.js";
 import {
   addLaneProjectile,
   applyDamage,
+  applyDotDamage,
   elapseBeamEnemies,
   findBarrierInterceptor,
   findElapseTarget,
   hitClosestInLaneDetailed,
+  hitHorizontalBand,
+  knockEnemyBack,
   pushGuardEvent,
+  addHorizontalBar,
 } from "./combatPrimitives.js";
+import { toEnemyFrameIndex } from "./enemyFrameIndex.js";
 
 export function resolveBulletShot({
   slot,
   lane,
   enemies,
   currentBeat,
+  targetBeat,
   echoAnchorBeat,
   beatSeconds,
   damageMultiplier,
+  chipEffects = [],
   scheduleEcho = () => {},
 }) {
   const def = getBulletDef(slot.id);
+  const enemyIndex = toEnemyFrameIndex(enemies);
   const events = [];
   const scale = (value) => value * damageMultiplier;
 
   resolveBulletHandler(def, {
     slot,
     lane,
-    enemies,
+    enemies: enemyIndex,
     currentBeat,
+    targetBeat,
     echoAnchorBeat,
     beatSeconds,
     damageMultiplier,
+    chipEffects,
     scheduleEcho,
     events,
     scale,
@@ -40,8 +50,56 @@ export function resolveBulletShot({
   return events;
 }
 
+function applyImpactEffects({ impact, target, enemies, currentBeat, events }) {
+  (impact.effects ?? []).forEach((effect) => {
+    if (effect.kind === "dot") {
+      applyDotDamage(target, effect, currentBeat);
+      return;
+    }
+
+    if (effect.kind === "horizontalBand") {
+      hitHorizontalBand(enemies, impact.y, effect.radius, effect.amount, currentBeat, events);
+      addHorizontalBar(events, effect.color, impact.y, effect.radius);
+      return;
+    }
+
+    console.warn("Unhandled impact effect", effect);
+  });
+}
+
+export function resolvePiercingImpact({ impact, enemies, currentBeat }) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  const target = enemyIndex.findById(impact.targetId);
+  const events = [];
+  if (!target || target.hp <= 0) {
+    return events;
+  }
+
+  if (impact.guard) {
+    const protectedTarget = enemyIndex.findById(impact.guardedTargetId) ?? {
+      id: impact.guardedTargetId,
+      lane: impact.lane,
+      y: impact.y,
+    };
+    pushGuardEvent(events, impact.lane ?? target.lane, target, currentBeat, protectedTarget);
+  }
+
+  const result = applyDamage(target, impact.amount, currentBeat, events, {
+    enemies: enemyIndex,
+  });
+  if (result.damaged) {
+    applyImpactEffects({ impact, target, enemies: enemyIndex, currentBeat, events });
+  }
+  if (Number.isFinite(impact.knockback) && !result.passedThrough) {
+    knockEnemyBack(target, impact.knockback);
+  }
+
+  return events;
+}
+
 export function updateDamageOverTime(enemies, dt, currentBeat, events) {
-  enemies.forEach((enemy) => {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  enemyIndex.enemies.forEach((enemy) => {
     enemy.dots = enemy.dots.filter((dot) => {
       if (
         dot.damageRemaining <= 0 ||
@@ -56,26 +114,70 @@ export function updateDamageOverTime(enemies, dt, currentBeat, events) {
       const damage = (dot.damageRemaining / dot.secondsRemaining) * step;
       dot.damageRemaining -= damage;
       dot.secondsRemaining -= step;
-      applyDamage(enemy, damage, currentBeat, events, { enemies, ignoreGhost: true, quiet: true });
+      applyDamage(enemy, damage, currentBeat, events, {
+        enemies: enemyIndex,
+        ignoreGhost: true,
+        quiet: true,
+      });
       return dot.damageRemaining > 0.01 && dot.secondsRemaining > 0.01;
     });
   });
 }
 
-export function resolveElapseStart({ lane, enemies, currentBeat }) {
+function summarizeChipEffects(chipEffects = []) {
+  const shell = getBulletDef("shell");
+  return {
+    stingerPierce: chipEffects.filter((chip) => chip.sourceId === "stinger").length,
+    shellKnockback: chipEffects
+      .filter((chip) => chip.sourceId === "shell")
+      .reduce((sum, chip) => sum + (chip.sourceUpgraded ? shell.knockback * 1.6 : shell.knockback) / 3, 0),
+  };
+}
+
+export function resolveElapseStart({
+  lane,
+  enemies,
+  currentBeat,
+  damageMultiplier = 1,
+  chipEffects = [],
+  upgraded = false,
+}) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
   const events = [];
-  const intendedTarget = elapseBeamEnemies(enemies, lane)[0] ?? null;
+  const chipSummary = summarizeChipEffects(chipEffects);
+  const intendedTarget = elapseBeamEnemies(enemyIndex, lane)[0] ?? null;
   if (!intendedTarget) {
     return { targetId: null, events };
   }
 
-  const interceptor = findBarrierInterceptor(enemies, lane, currentBeat, intendedTarget);
-  const target = interceptor ?? intendedTarget;
+  const interceptor = findBarrierInterceptor(enemyIndex, lane, currentBeat, intendedTarget);
   if (interceptor) {
-    pushGuardEvent(events, lane, interceptor, currentBeat);
+    pushGuardEvent(events, lane, interceptor, currentBeat, intendedTarget);
+  }
+  const damageTarget = interceptor ?? intendedTarget;
+  if (chipSummary.shellKnockback > 0) {
+    knockEnemyBack(damageTarget, chipSummary.shellKnockback);
   }
 
-  return { targetId: target.id, events };
+  const secondaryTarget = chipSummary.stingerPierce > 0
+    ? elapseBeamEnemies(enemyIndex, lane).find((enemy) => enemy.id !== intendedTarget.id)
+    : null;
+  const def = getBulletDef("elapse-left");
+  const secondaryDamagePerBeat = secondaryTarget
+    ? Math.ceil(def.damagePerBeat / 3) * damageMultiplier
+    : 0;
+  const secondarySlowMultiplier = secondaryTarget && upgraded
+    ? 1 - (1 - 0.7) / 3
+    : 1;
+
+  return {
+    targetId: intendedTarget.id,
+    guardId: interceptor?.id ?? null,
+    secondaryTargetId: secondaryTarget?.id ?? null,
+    secondaryDamagePerBeat,
+    secondarySlowMultiplier,
+    events,
+  };
 }
 
 export function updateElapseBeamDamage({
@@ -86,16 +188,42 @@ export function updateElapseBeamDamage({
   beatSeconds,
   damageMultiplier,
 }) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
   const events = [];
   const def = getBulletDef("elapse-left");
-  const target = findElapseTarget(enemies, beam.lane, beam.targetId);
+  const target = findElapseTarget(enemyIndex, beam.lane, beam.targetId);
   if (!target) {
     return { targetId: null, target: null, events };
   }
 
+  const guard = enemyIndex.findById(beam.guardId);
+  const damageTarget = guard?.hp > 0 ? guard : target;
   const damage = def.damagePerBeat * damageMultiplier * (dt / beatSeconds);
-  applyDamage(target, damage, currentBeat, events, { enemies, ignoreGhost: true, quiet: true });
-  return { targetId: target.hp > 0 ? target.id : null, target, events };
+  applyDamage(damageTarget, damage, currentBeat, events, {
+    enemies: enemyIndex,
+    ignoreGhost: true,
+    quiet: true,
+  });
+  const secondaryTarget = enemyIndex.findById(beam.secondaryTargetId);
+  if (
+    secondaryTarget?.hp > 0 &&
+    secondaryTarget.id !== target.id &&
+    secondaryTarget.targetable !== false &&
+    beam.secondaryDamagePerBeat > 0
+  ) {
+    applyDamage(secondaryTarget, beam.secondaryDamagePerBeat * (dt / beatSeconds), currentBeat, events, {
+      enemies: enemyIndex,
+      ignoreGhost: true,
+      quiet: true,
+    });
+  }
+  return {
+    targetId: target.hp > 0 ? target.id : null,
+    guardId: guard?.hp > 0 ? guard.id : null,
+    secondaryTargetId: secondaryTarget?.hp > 0 && secondaryTarget.id !== target.id ? secondaryTarget.id : null,
+    target,
+    events,
+  };
 }
 
 export function resolveElapseFinish({
@@ -104,18 +232,35 @@ export function resolveElapseFinish({
   currentBeat,
   damageMultiplier,
   weak = false,
+  beatSeconds = 1,
+  chipEffects = [],
 }) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
   const def = getBulletDef("elapse-right");
   const events = [];
   const amount = (weak ? def.weakDamage : def.damage) * damageMultiplier;
-  const hit = hitClosestInLaneDetailed(enemies, lane, amount, currentBeat, events);
-  addLaneProjectile(
-    events,
-    lane,
-    weak ? "#a86674" : def.color,
-    weak,
-    hit.target?.y ?? 0.04,
-    weak ? 4 : 12,
-  );
+  const chipSummary = summarizeChipEffects(chipEffects);
+  if (chipSummary.stingerPierce > 0) {
+    resolveBulletHandler(def, {
+      slot: { id: "elapse-right", upgraded: false, weak },
+      lane,
+      enemies: enemyIndex,
+      currentBeat,
+      targetBeat: currentBeat,
+      echoAnchorBeat: currentBeat,
+      beatSeconds,
+      damageMultiplier,
+      chipEffects,
+      events,
+      scale: (value) => value * (weak ? def.weakDamage / def.damage : 1) * damageMultiplier,
+    });
+    return events;
+  }
+
+  const hit = hitClosestInLaneDetailed(enemyIndex, lane, amount, currentBeat, events);
+  if (chipSummary.shellKnockback > 0 && hit.damageTarget && !hit.result?.passedThrough) {
+    knockEnemyBack(hit.damageTarget, chipSummary.shellKnockback);
+  }
+  addLaneProjectile(events, lane, weak ? "#a86674" : def.color, weak, hit.target?.y ?? 0.04, weak ? 4 : 12);
   return events;
 }

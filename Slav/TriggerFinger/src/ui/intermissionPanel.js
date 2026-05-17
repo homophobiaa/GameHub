@@ -7,6 +7,7 @@ import {
   isElapsePiece,
 } from "../defs/bullets.js";
 import { getEnemyDef } from "../defs/enemies.js";
+import { EPSILON, QUARTER_BEAT } from "../utils/beatMath.js";
 import { getTimelineDomainMetrics, timelineLeft } from "./timelineMetrics.js";
 
 function timingLabel(timing) {
@@ -55,6 +56,10 @@ function renderTimingStats(piece, def) {
 }
 
 function renderBulletDescription(piece, def) {
+  if (piece.upgraded && piece.id === "pair") {
+    return escapeHtml(def.description ?? "");
+  }
+
   if (piece.upgraded && def.upgradeDescription) {
     return renderHighlightedText(def.upgradeDescription, def.upgradeHighlight);
   }
@@ -236,8 +241,19 @@ function renderElapseInventoryCard(track, pieces) {
   `;
 }
 
-function renderTrackEditor(track) {
-  const placementViews = track.getPlacementViews();
+function getQuarterBeatMarks(track) {
+  const marks = [];
+  for (let beat = 0; beat < track.cycleBeats - EPSILON; beat += QUARTER_BEAT) {
+    marks.push(Number(beat.toFixed(2)));
+  }
+
+  return marks;
+}
+
+function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
+  const placementViews = track
+    .getPlacementViews()
+    .filter((entry) => !hiddenUids.has(entry.uid));
   const marks = track
     .getTimelineMarks()
     .map(
@@ -258,6 +274,19 @@ function renderTrackEditor(track) {
           style="left:${timelineLeft(mark.beat, track.cycleBeats)}%"
           data-drop-beat="${mark.beat}"
           aria-label="Place at beat ${mark.beat}"
+        ></button>
+      `,
+    )
+    .join("");
+
+  const chipDrops = getQuarterBeatMarks(track)
+    .map(
+      (beat) => `
+        <button
+          class="chip-timeline-drop"
+          style="left:${timelineLeft(beat, track.cycleBeats)}%"
+          data-chip-drop-beat="${beat}"
+          aria-label="Place chip at beat ${beat}"
         ></button>
       `,
     )
@@ -325,6 +354,33 @@ function renderTrackEditor(track) {
       `;
     })
     .join("");
+  const placementUids = new Set(placementViews.map((entry) => entry.uid));
+  const chips = scrapChips
+    .filter((chip) =>
+      chip.hostUid &&
+      Number.isFinite(chip.beat) &&
+      placementUids.has(chip.hostUid) &&
+      !hiddenUids.has(chip.hostUid)
+    )
+    .map((chip) => {
+      const host = track.findPiece(chip.hostUid);
+      const color = chip.color ?? (host ? getSlotColor(host) : "#9aa1ad");
+      return `
+        <button
+          class="scrap-chip-token timeline-chip"
+          draggable="true"
+          style="left:${timelineLeft(chip.beat, track.cycleBeats)}%;--chip-color:${color};--piece-color:${color}"
+          data-chip-uid="${chip.uid}"
+          data-chip-source="track"
+          data-chip-host="${chip.hostUid}"
+          title="${escapeHtml(chip.sourceName ?? "Chip")} at ${chip.beat}"
+          aria-label="Drag placed chip"
+        >
+          <span class="scrap-chip-body"></span>
+        </button>
+      `;
+    })
+    .join("");
 
   return `
     <div class="timeline-editor" data-timeline>
@@ -335,21 +391,25 @@ function renderTrackEditor(track) {
       <div class="timeline-body">
         ${marks}
         ${drops}
+        ${chipDrops}
         ${elapseLinks}
+        ${chips}
         ${placements}
       </div>
     </div>
   `;
 }
 
-function renderInventory(track) {
+function renderInventory(track, hiddenUids = new Set()) {
   const inventoryIds = new Set(track.inventory.map((piece) => piece.uid));
-  const owned = track.allPieces.map((piece) => ({
-    ...piece,
-    def: getBulletDef(piece.id),
-    name: getSlotName(piece),
-    color: getSlotColor(piece),
-  }));
+  const owned = track.allPieces
+    .filter((piece) => !hiddenUids.has(piece.uid))
+    .map((piece) => ({
+      ...piece,
+      def: getBulletDef(piece.id),
+      name: getSlotName(piece),
+      color: getSlotColor(piece),
+    }));
   const renderedElapseGroups = new Set();
   const contents = owned.length
     ? owned
@@ -386,6 +446,43 @@ function renderInventory(track) {
   `;
 }
 
+function getHiddenStoreUids(track, candidateUid) {
+  const candidate = candidateUid ? track.findPiece(candidateUid) : null;
+  if (!candidate) {
+    return new Set();
+  }
+
+  if (isElapsePiece(candidate) && candidate.groupId) {
+    return new Set(track.getGroupPieces(candidate.groupId).map((piece) => piece.uid));
+  }
+
+  return new Set([candidate.uid]);
+}
+
+function getHiddenEditorUids(track, ...candidateUids) {
+  return candidateUids.reduce((hidden, candidateUid) => {
+    getHiddenStoreUids(track, candidateUid).forEach((uid) => hidden.add(uid));
+    return hidden;
+  }, new Set());
+}
+
+function getScrappableCount(track) {
+  const seenGroups = new Set();
+  return track.allPieces.filter((piece) => {
+    if (isElapsePiece(piece) && piece.groupId) {
+      if (seenGroups.has(piece.groupId)) {
+        return false;
+      }
+      seenGroups.add(piece.groupId);
+    }
+
+    const groupSize = isElapsePiece(piece) && piece.groupId
+      ? track.getGroupPieces(piece.groupId).length
+      : 1;
+    return track.allPieces.length - groupSize > 0;
+  }).length;
+}
+
 function renderStoreChoice(choice, index, disabled) {
   if (choice.kind === "add-piece") {
     const def = getBulletDef(choice.bulletId);
@@ -414,7 +511,7 @@ function renderStoreChoice(choice, index, disabled) {
   `;
 }
 
-export function renderForgerySlot(track, disabled, forgeCandidateUid = null) {
+export function renderWhetstoneSlot(track, disabled, forgeCandidateUid = null) {
   const upgradeableCount = track.allPieces.filter((piece) => !piece.upgraded).length;
   const candidate = forgeCandidateUid ? track.findPiece(forgeCandidateUid) : null;
   const candidateDef = candidate ? getBulletDef(candidate.id) : null;
@@ -429,9 +526,9 @@ export function renderForgerySlot(track, disabled, forgeCandidateUid = null) {
       ${canForgeCandidate ? `data-action="forge-candidate"` : ""}
     >
       <div class="forgery-slot-copy">
-        <strong>${candidate ? `Forge ${escapeHtml(getSlotName(candidate))}` : "Forgery Slot"}</strong>
+        <strong>${candidate ? `Hone ${escapeHtml(getSlotName(candidate))}` : "Whetstone Slot"}</strong>
         <small>${description}</small>
-        ${candidate ? `<small>${canForgeCandidate ? "Click the panel to upgrade." : "No forge pick available."}</small>` : ""}
+        ${candidate ? `<small>${canForgeCandidate ? "Click the panel to hone." : "No Whetstone pick available."}</small>` : ""}
       </div>
       <span class="forgery-socket">
         ${candidateDef
@@ -451,13 +548,89 @@ export function renderForgerySlot(track, disabled, forgeCandidateUid = null) {
   `;
 }
 
+export const renderForgerySlot = renderWhetstoneSlot;
+
+export function renderWreckerSlot(track, disabled, wreckerCandidateUid = null) {
+  const scrappableCount = getScrappableCount(track);
+  const candidate = wreckerCandidateUid ? track.findPiece(wreckerCandidateUid) : null;
+  const candidateDef = candidate ? getBulletDef(candidate.id) : null;
+  const groupSize = candidate && isElapsePiece(candidate) && candidate.groupId
+    ? track.getGroupPieces(candidate.groupId).length
+    : 1;
+  const canWreckCandidate = Boolean(candidate && !disabled && track.allPieces.length - groupSize > 0);
+  const description = candidateDef
+    ? "Scraps into two inert chips for later systems."
+    : `${scrappableCount > 0 ? `${scrappableCount} bullet${scrappableCount === 1 ? "" : "s"} can be scrapped` : "Need at least one bullet left after scrapping"}`;
+
+  return `
+    <div
+      class="forgery-slot wrecker-slot ${disabled || scrappableCount === 0 ? "is-disabled" : ""} ${candidate ? "has-candidate" : ""}"
+      data-wrecker-drop
+      ${canWreckCandidate ? `data-action="wreck-candidate"` : ""}
+    >
+      <div class="forgery-slot-copy">
+        <strong>${candidate ? `Scrap ${escapeHtml(getSlotName(candidate))}` : "Wrecker Slot"}</strong>
+        <small>${description}</small>
+        ${candidate ? `<small>${canWreckCandidate ? "Click the panel to scrap." : "No Wrecker pick available."}</small>` : ""}
+      </div>
+      <span class="forgery-socket">
+        ${candidateDef
+          ? renderMiniBullet({
+              def: candidateDef,
+              color: getSlotColor(candidate),
+              uid: candidate.uid,
+              source: "wrecker-candidate",
+              disabled: true,
+              upgraded: Boolean(candidate.upgraded),
+              extraClasses: elapseClasses(candidate),
+            }).replace("inventory-token-slot", "inventory-token-slot forgery-token-slot")
+              .replace("data-piece-source=\"wrecker-candidate\"", "data-piece-source=\"wrecker-candidate\" data-wrecker-candidate-token")
+          : "<span></span>"}
+      </span>
+    </div>
+  `;
+}
+
+function renderScrapChip(chip) {
+  return `
+    <button
+      class="scrap-chip-token"
+      draggable="true"
+      style="--chip-color:${chip.color};--piece-color:${chip.color}"
+      data-chip-uid="${chip.uid}"
+      data-chip-source="inventory"
+      aria-label="Drag ${escapeHtml(chip.sourceName)} chip"
+      title="${escapeHtml(chip.sourceName)} chip"
+    >
+      <span class="scrap-chip-body"></span>
+    </button>
+  `;
+}
+
+function renderChipTray(scrapChips = []) {
+  return `
+    <div class="scrap-chip-tray">
+      <div class="timeline-head">
+        <span>Chips</span>
+        <span>inert fragments</span>
+      </div>
+      <div class="scrap-chip-slot" data-chip-tray-drop>
+        ${scrapChips.filter((chip) => !chip.hostUid).length
+          ? scrapChips.filter((chip) => !chip.hostUid).map(renderScrapChip).join("")
+          : `<p class="scrap-chip-empty">Scrap bullets at the Wrecker to collect chips.</p>`}
+      </div>
+    </div>
+  `;
+}
+
 function renderEnemyDraftChoice(choice) {
   const def = getEnemyDef(choice.type);
+  const kind = choice.kind ?? "enemy";
   return `
     <button
       class="store-choice choice-button enemy-draft-choice"
       style="--enemy-color:${choice.color ?? def.color}"
-      data-action="enemy-choice:${choice.type}"
+      data-action="enemy-choice:${kind}:${choice.type}"
     >
       <span class="choice-name">${choice.title}</span>
       <span class="choice-copy">${choice.copy ?? def.description}</span>
@@ -475,6 +648,8 @@ export function renderIntermissionPanel({
   storePicks = 0,
   bankedStorePicks = 0,
   forgeCandidateUid = null,
+  wreckerCandidateUid = null,
+  scrapChips = [],
   enemyDraft = null,
   debugTools = "",
   message = "",
@@ -482,6 +657,8 @@ export function renderIntermissionPanel({
   const hasStore = Boolean(storeOffer);
   const hasCredits = storePicks > 0;
   const hasEnemyDraft = Boolean(enemyDraft?.choices?.length);
+  const draftKind = enemyDraft?.kind ?? enemyDraft?.choices?.[0]?.kind ?? "enemy";
+  const hiddenEditorUids = getHiddenEditorUids(track, forgeCandidateUid, wreckerCandidateUid);
   const selected = track.findPiece(track.selectedUid);
   const selectedDef = selected ? getBulletDef(selected.id) : null;
   const selectedCopy = selected
@@ -498,9 +675,17 @@ export function renderIntermissionPanel({
     ? `
       <aside class="store-menu">
         <div class="store-header">
-          <span>Enemy Pool</span>
-          <small>Pick one enemy type to add to future procedural waves.</small>
-          <small>${enemyDraft.unlocked.length - 1} special${enemyDraft.unlocked.length === 2 ? "" : "s"} active</small>
+          <span>Woe</span>
+          <small>${
+            draftKind === "aspect"
+              ? "Pick one unlocked special type to modify future copies."
+              : "Pick one enemy type to add to future procedural waves."
+          }</small>
+          <small>${
+            draftKind === "aspect"
+              ? `${enemyDraft.aspectGrantors?.length ?? 0} spreading special${(enemyDraft.aspectGrantors?.length ?? 0) === 1 ? "" : "s"} active`
+              : `${enemyDraft.unlocked.length - 1} special${enemyDraft.unlocked.length === 2 ? "" : "s"} active`
+          }</small>
         </div>
         <div class="store-choice-list">
           ${enemyDraft.choices.map(renderEnemyDraftChoice).join("")}
@@ -515,8 +700,10 @@ export function renderIntermissionPanel({
           <small>${storeOffer?.store.copy ?? "Pick one reward."}</small>
           <small>${storePicks} pick${storePicks === 1 ? "" : "s"} available${bankedStorePicks ? `, ${bankedStorePicks} banked` : ""}</small>
         </div>
-        ${storeOffer.store.id === "forgery"
-          ? renderForgerySlot(track, !hasCredits, forgeCandidateUid)
+        ${storeOffer.store.id === "whetstone"
+          ? renderWhetstoneSlot(track, !hasCredits, forgeCandidateUid)
+          : storeOffer.store.id === "wrecker"
+          ? renderWreckerSlot(track, !hasCredits, wreckerCandidateUid)
           : `
             <div class="store-choice-list">
               ${choices
@@ -550,8 +737,9 @@ export function renderIntermissionPanel({
         ${choiceHtml}
         <section class="editor-tab" data-inventory-drop>
           <p class="selected-copy">${message || selectedCopy}</p>
-          ${renderTrackEditor(track)}
-          ${renderInventory(track)}
+          ${renderTrackEditor(track, hiddenEditorUids, scrapChips)}
+          ${renderInventory(track, hiddenEditorUids)}
+          ${renderChipTray(scrapChips)}
         </section>
       </div>
       <div class="upgrade-actions">

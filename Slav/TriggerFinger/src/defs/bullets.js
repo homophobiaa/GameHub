@@ -9,11 +9,11 @@ export const BULLET_DEFS = {
     leadBeats: 0.5,
     followBeats: 0,
     damage: BASE_DAMAGE,
-    pierce: 1,
-    description: "Solid damage and pierces one enemy.",
+    pierce: 2,
+    description: "Solid damage and pierces two enemies.",
     upgradeName: "Needle",
-    upgradeDescription: "Solid damage and pierces two enemies.",
-    upgradeHighlight: "two enemies",
+    upgradeDescription: "Solid damage and pierces three enemies.",
+    upgradeHighlight: "three",
   },
   shell: {
     id: "shell",
@@ -110,7 +110,7 @@ export const BULLET_DEFS = {
     timing: "offbeat",
     leadBeats: 0.5,
     followBeats: 0,
-    damagePerBeat: 3.5,
+    damagePerBeat: 4,
     half: "left",
     parentId: "elapse",
     description: "Hold the left half to fire a continuous beam.",
@@ -149,8 +149,8 @@ export const BULLET_POOL = [
 export const STARTING_TRACK = {
   cycleBeats: 3.5,
   placements: [
-    { uid: "p1", id: "stinger", upgraded: false, beat: 1 },
-    { uid: "p2", id: "shell", upgraded: false, beat: 2 },
+    { uid: "p1", id: "stinger", upgraded: false, beat: 3 },
+    { uid: "p2", id: "shell", upgraded: false, beat: 0 },
   ],
   inventory: [],
 };

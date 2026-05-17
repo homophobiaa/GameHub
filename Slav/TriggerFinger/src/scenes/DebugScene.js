@@ -1,12 +1,13 @@
 import { BULLET_POOL } from "../defs/bullets.js";
 import { ENEMY_DEFS, SPECIAL_ENEMY_POOL, getEnemyDef } from "../defs/enemies.js";
+import { LANES } from "../config/gameplay.js";
 import { getComboCap } from "../systems/timing.js";
 import { createEnemy, WaveRunner } from "../systems/waveRunner.js";
 import { createStoreOffer } from "../systems/upgrades.js";
-import { renderForgerySlot, renderIntermissionPanel } from "../ui/intermissionPanel.js";
+import { renderWhetstoneSlot, renderWreckerSlot } from "../ui/intermissionPanel.js";
 import { GameScene } from "./GameScene.js";
 
-const STORE_IDS = ["warehouse", "forgery", "workshop"];
+const STORE_IDS = ["warehouse", "whetstone", "wrecker", "workshop"];
 
 function selectedAttr(value, selected) {
   return value === selected ? "selected" : "";
@@ -34,8 +35,8 @@ export class DebugScene extends GameScene {
     this.debugReady = true;
     this.active = true;
     this.intermission = false;
-    this.overlay.hidden = true;
-    this.overlay.innerHTML = "";
+    this.intermissionView.hide();
+    this.intermissionView.clear();
     this.track.start(this.beat);
     this.lastWholeBeat = Math.floor(this.beat);
     this.waveRunner.finish();
@@ -62,7 +63,7 @@ export class DebugScene extends GameScene {
       return;
     }
 
-    this.overlay.hidden = true;
+    this.intermissionView.hide();
   }
 
   shouldUpdateWaves() {
@@ -152,16 +153,14 @@ export class DebugScene extends GameScene {
       return;
     }
 
-    this.overlay.hidden = true;
+    this.intermissionView.hide();
     this.clearPlacementHighlights();
   }
 
   showDebugPanel() {
     this.enableDebugBeatPreview();
-    const scrollState = this.captureIntermissionScroll();
     this.debugPanelOpen = true;
-    this.overlay.hidden = false;
-    this.overlay.innerHTML = renderIntermissionPanel({
+    this.intermissionView.renderIntermission({
       isFirst: false,
       waveIndex: this.waveIndex,
       track: this.track,
@@ -171,10 +170,11 @@ export class DebugScene extends GameScene {
       storePicks: this.storePicks,
       bankedStorePicks: this.bankedStorePicks,
       forgeCandidateUid: this.forgeCandidateUid,
+      wreckerCandidateUid: this.wreckerCandidateUid,
+      scrapChips: this.scrapChips,
       debugTools: this.renderDebugTools(),
       message: this.editorMessage,
     });
-    this.restoreIntermissionScroll(scrollState);
   }
 
   readDebugControls() {
@@ -187,7 +187,7 @@ export class DebugScene extends GameScene {
       this.debugEnemyType = enemyType;
     }
 
-    if (Number.isInteger(lane) && lane >= 0 && lane <= 2) {
+    if (Number.isInteger(lane) && LANES.includes(lane)) {
       this.debugLane = lane;
     }
 
@@ -274,12 +274,22 @@ export class DebugScene extends GameScene {
   }
 
   renderDebugChoiceList() {
-    if (this.storeOffer?.store.id === "forgery") {
+    if (this.storeOffer?.store.id === "whetstone") {
       const upgradeableCount = this.track.allPieces.filter((piece) => !piece.upgraded).length;
       return `
         <div class="debug-shop-list">
           <span class="debug-section-title">${this.storeOffer.store.name} | free</span>
-          ${renderForgerySlot(this.track, upgradeableCount === 0, this.forgeCandidateUid)}
+          ${renderWhetstoneSlot(this.track, upgradeableCount === 0, this.forgeCandidateUid)}
+        </div>
+      `;
+    }
+
+    if (this.storeOffer?.store.id === "wrecker") {
+      const scrappableCount = this.getScrappablePieceCount();
+      return `
+        <div class="debug-shop-list">
+          <span class="debug-section-title">${this.storeOffer.store.name} | free</span>
+          ${renderWreckerSlot(this.track, scrappableCount === 0, this.wreckerCandidateUid)}
         </div>
       `;
     }
@@ -307,6 +317,10 @@ export class DebugScene extends GameScene {
       .join("");
     const storeOptions = STORE_IDS
       .map((id) => `<option value="${id}" ${selectedAttr(id, this.debugStoreId)}>${id}</option>`)
+      .join("");
+    const laneLabels = ["Left", "Mid", "Right"];
+    const laneOptions = LANES
+      .map((lane) => `<option value="${lane}" ${selectedAttr(lane, this.debugLane)}>${laneLabels[lane] ?? lane}</option>`)
       .join("");
     const comboCap = getComboCap({ comboCap: this.comboCap }).toFixed(2);
     const damageMultiplier = this.damageMultiplier().toFixed(2);
@@ -336,9 +350,7 @@ export class DebugScene extends GameScene {
         <label class="debug-field">
           <span>Lane</span>
           <select data-debug-lane>
-            <option value="0" ${selectedAttr(0, this.debugLane)}>Left</option>
-            <option value="1" ${selectedAttr(1, this.debugLane)}>Mid</option>
-            <option value="2" ${selectedAttr(2, this.debugLane)}>Right</option>
+            ${laneOptions}
           </select>
         </label>
         <button class="debug-tool-button" data-debug-action="spawn-enemy">Spawn Enemy</button>
@@ -360,7 +372,7 @@ export class DebugScene extends GameScene {
         </div>
 
         <div class="debug-pool">
-          <span class="debug-section-title">Enemy Pool</span>
+          <span class="debug-section-title">Woe Pool</span>
           <small>${this.enemyPool.map((type) => getEnemyDef(type).name).join(", ")}</small>
         </div>
         <div class="debug-pool">

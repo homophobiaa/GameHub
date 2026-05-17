@@ -43,11 +43,11 @@ export const ENEMY_DEFS = {
     id: "barrier",
     name: "Barrier",
     color: "#58a9ff",
-    hp: BASE_DAMAGE * 4.5,
+    hp: BASE_DAMAGE * 4,
     speed: 0.048,
     score: 190,
     interceptsPerBeat: 1,
-    description: "Slow guard that intercepts lane hits.",
+    description: "Transfers damage on its lane to itself",
   },
   leap: {
     id: "leap",

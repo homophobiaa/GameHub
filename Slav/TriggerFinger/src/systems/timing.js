@@ -1,4 +1,9 @@
 import { clamp } from "../utils/math.js";
+import {
+  GOOD_WINDOW_BEATS,
+  PERFECT_WINDOW_BEATS,
+  SEVERE_EARLY_WINDOW_BEATS,
+} from "../config/gameplay.js";
 
 export const MAX_COMBO_CAP = 3;
 
@@ -15,7 +20,7 @@ export function rateTiming(delta) {
 
   const abs = Math.abs(delta);
 
-  if (abs <= 0.08) {
+  if (abs <= PERFECT_WINDOW_BEATS) {
     return {
       label: "perfect",
       color: "#f3bf4d",
@@ -25,7 +30,7 @@ export function rateTiming(delta) {
     };
   }
 
-  if (abs <= 0.18) {
+  if (abs <= GOOD_WINDOW_BEATS) {
     return {
       label: "good",
       color: "#48d39b",
@@ -35,8 +40,8 @@ export function rateTiming(delta) {
     };
   }
 
-  if (delta < -0.18) {
-    const severe = delta < -0.5;
+  if (delta < -GOOD_WINDOW_BEATS) {
+    const severe = delta < -SEVERE_EARLY_WINDOW_BEATS;
     return {
       label: severe ? "early!" : "early",
       color: "#58a9ff",

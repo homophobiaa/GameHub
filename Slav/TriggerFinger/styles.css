@@ -724,8 +724,24 @@ input {
   transform: translateX(-50%);
 }
 
+.chip-timeline-drop {
+  position: absolute;
+  top: 34px;
+  bottom: 28px;
+  width: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  pointer-events: none;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+
 .timeline-drop:active,
-.timeline-piece:active {
+.timeline-piece:active,
+.chip-timeline-drop:active,
+.timeline-chip:active {
   transform: translateX(-50%);
 }
 
@@ -755,6 +771,32 @@ input {
   background: rgba(230, 93, 93, 0.18);
 }
 
+.timeline-body.is-chip-dragging .chip-timeline-drop {
+  pointer-events: auto;
+}
+
+.timeline-body.is-chip-dragging .chip-timeline-drop:hover,
+.timeline-body.is-chip-dragging .chip-timeline-drop:focus-visible {
+  background: rgba(184, 193, 207, 0.08);
+}
+
+.timeline-body.is-chip-dragging .chip-timeline-drop.is-valid-drop {
+  background: rgba(72, 211, 155, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(72, 211, 155, 0.46);
+}
+
+.timeline-body.is-chip-dragging .chip-timeline-drop.is-invalid-drop {
+  cursor: not-allowed;
+}
+
+.timeline-body.is-chip-dragging .chip-timeline-drop.is-valid-drop.is-hover-drop {
+  background: rgba(72, 211, 155, 0.26);
+}
+
+.timeline-body.is-chip-dragging .chip-timeline-drop.is-invalid-drop.is-hover-drop {
+  background: rgba(230, 93, 93, 0.18);
+}
+
 .timeline-domain {
   position: absolute;
   top: 48px;
@@ -763,6 +805,7 @@ input {
   border-radius: 6px;
   background: color-mix(in srgb, var(--piece-color), transparent 72%);
   pointer-events: none;
+  z-index: 1;
 }
 
 .timeline-piece {
@@ -928,7 +971,8 @@ input {
 
 .timeline-piece.is-drag-source,
 .inventory-piece.is-drag-source,
-.inventory-token.is-drag-source {
+.inventory-token.is-drag-source,
+.scrap-chip-token.is-drag-source {
   opacity: 0.38;
 }
 
@@ -949,6 +993,21 @@ input {
   pointer-events: none;
   transform: translate(-50%, -50%);
   z-index: 9999;
+}
+
+.drag-proxy.is-scrap-chip {
+  width: 42px;
+  height: 54px;
+}
+
+.drag-proxy.is-scrap-chip > .scrap-chip-body {
+  width: 10px;
+  height: 36px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--chip-color), #9aa1ad 72%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 14px color-mix(in srgb, var(--chip-color), transparent 70%);
 }
 
 .drag-proxy.is-elapse-left > .bullet-glyph {
@@ -994,6 +1053,16 @@ input {
   z-index: 10020;
 }
 
+.wrecker-scrap-ghost {
+  z-index: 10020;
+}
+
+.wrecker-chip-ghost {
+  position: fixed;
+  z-index: 10025;
+  pointer-events: none;
+}
+
 .forgery-upgrade-ghost > .bullet-glyph {
   width: 42px;
   height: 42px;
@@ -1015,6 +1084,19 @@ input {
     0 0 12px color-mix(in srgb, var(--spark-color), #fff 35%);
   pointer-events: none;
   z-index: 10030;
+}
+
+.wrecker-flash {
+  position: fixed;
+  width: 54px;
+  height: 54px;
+  border: 2px solid color-mix(in srgb, var(--spark-color), #fff 64%);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 16px color-mix(in srgb, var(--spark-color), transparent 42%),
+    0 0 18px color-mix(in srgb, var(--spark-color), #fff 38%);
+  pointer-events: none;
+  z-index: 10024;
 }
 
 @keyframes forgePulse {
@@ -1051,6 +1133,77 @@ input {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 8px;
+}
+
+.scrap-chip-tray {
+  margin-top: 2px;
+}
+
+.scrap-chip-slot {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  width: 100%;
+  min-height: 64px;
+  padding: 11px 14px;
+  border: 1px solid #30394a;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(139, 146, 158, 0.08), transparent 68%),
+    #11151d;
+  overflow-x: auto;
+}
+
+.scrap-chip-token {
+  flex: 0 0 auto;
+  display: grid;
+  width: 20px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--chip-color), #8d95a3 58%);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--chip-color), #7d8491 74%);
+  cursor: grab;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.timeline-chip {
+  position: absolute;
+  top: 43px;
+  width: 18px;
+  height: 34px;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.timeline-chip.is-chip-arriving,
+.scrap-chip-token.is-chip-arriving {
+  opacity: 0;
+}
+
+.scrap-chip-token:active {
+  cursor: grabbing;
+  transform: none;
+}
+
+.timeline-chip:active {
+  transform: translateX(-50%);
+}
+
+.scrap-chip-body {
+  display: block;
+  width: 8px;
+  height: 28px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--chip-color), #b4bac4 78%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.scrap-chip-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.73rem;
 }
 
 .elapse-token-pair {
@@ -1164,6 +1317,7 @@ input {
   opacity: 0.42;
 }
 
+.timeline-piece.is-return-arriving,
 .inventory-token.is-return-arriving {
   opacity: 0;
 }
@@ -1293,6 +1447,27 @@ input {
   cursor: pointer;
   border-style: solid;
   box-shadow: inset 0 0 0 1px rgba(255, 242, 190, 0.18);
+}
+
+.wrecker-slot {
+  border-color: color-mix(in srgb, #8f99a8, #fff 12%);
+  background:
+    linear-gradient(90deg, rgba(143, 153, 168, 0.16), transparent 64%),
+    #202631;
+}
+
+.wrecker-slot.has-candidate {
+  box-shadow: inset 0 0 0 1px rgba(184, 193, 207, 0.2);
+}
+
+.wrecker-slot .forgery-socket {
+  border-color: rgba(184, 193, 207, 0.55);
+  box-shadow: inset 0 0 18px rgba(143, 153, 168, 0.14);
+}
+
+.wrecker-slot .forgery-socket > span:not(.inventory-token-slot) {
+  border-color: rgba(184, 193, 207, 0.72);
+  box-shadow: 0 0 14px rgba(184, 193, 207, 0.22);
 }
 
 .forgery-slot.is-disabled {
