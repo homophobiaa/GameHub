@@ -1,5 +1,6 @@
 import {
   getBulletDef,
+  getBulletPieces,
   getElapseHalf,
   getSlotColor,
   getSlotFollowBeats,
@@ -39,6 +40,23 @@ function finiteBeat(value, fallback = 0) {
 
 function beatReleaseAfter(targetBeat) {
   return Math.floor(finiteBeat(targetBeat)) + 1;
+}
+
+function timingPhaseForPlacement(placement, def) {
+  if (def.timing !== "either") {
+    return null;
+  }
+
+  return ((finiteBeat(placement.beat) % 1) + 1) % 1;
+}
+
+function alignPlacementTimingAtOrAfter(value, placement, def) {
+  const phase = timingPhaseForPlacement(placement, def);
+  if (phase === null) {
+    return alignTimingAtOrAfter(value, def.timing);
+  }
+
+  return phase + Math.ceil((value - phase - EPSILON) / 1) * 1;
 }
 
 function domainsOverlap(a, b) {
@@ -220,9 +238,11 @@ export class BeatTrack {
     return this._timelineMarks;
   }
 
-  start(currentBeat) {
+  start(currentBeat, options = {}) {
     const safeCurrentBeat = finiteBeat(currentBeat);
+    const startDelayBeats = Math.max(0, finiteBeat(options.startDelayBeats));
     this.currentIndex = 0;
+    this.cycleAnchorBeat = safeCurrentBeat + startDelayBeats;
     this.readyAfterBeat = safeCurrentBeat;
     this.lockUntilBeat = safeCurrentBeat;
     this.reloadUntilBeat = null;
@@ -272,24 +292,30 @@ export class BeatTrack {
 
   isElapseGroupCompleteOnTrack(groupId) {
     const pieces = this.getGroupPieces(groupId);
-    return ["elapse-left", "elapse-right"].every((id) =>
-      pieces.some((piece) => piece.id === id && this.isPieceOnTrack(piece.uid)),
+    return getBulletPieces("elapse").every((def) =>
+      pieces.some((piece) => piece.id === def.id && this.isPieceOnTrack(piece.uid)),
     );
   }
 
   getCurrentCycleStart(currentBeat) {
-    return Math.floor(finiteBeat(currentBeat) / this.cycleBeats) * this.cycleBeats;
+    const safeCurrentBeat = finiteBeat(currentBeat);
+    const anchor = finiteBeat(this.cycleAnchorBeat);
+    if (safeCurrentBeat <= anchor + EPSILON) {
+      return anchor;
+    }
+
+    return Math.floor((safeCurrentBeat - anchor) / this.cycleBeats) * this.cycleBeats + anchor;
   }
 
   getInitialTargetBeat(placement, currentBeat) {
     const safeCurrentBeat = finiteBeat(currentBeat);
     const def = getBulletDef(placement.id);
     let cycleBeat = this.getCurrentCycleStart(currentBeat) + placement.beat;
-    let absoluteBeat = alignTimingAtOrAfter(cycleBeat, def.timing);
+    let absoluteBeat = alignPlacementTimingAtOrAfter(cycleBeat, placement, def);
 
     while (absoluteBeat < safeCurrentBeat - GOOD_WINDOW_BEATS) {
       cycleBeat += this.cycleBeats;
-      absoluteBeat = alignTimingAtOrAfter(cycleBeat, def.timing);
+      absoluteBeat = alignPlacementTimingAtOrAfter(cycleBeat, placement, def);
     }
 
     return absoluteBeat;
@@ -336,7 +362,11 @@ export class BeatTrack {
       return target;
     }
 
-    this.baseTargetBeat = alignTimingAtOrAfter(Math.max(safeCurrentBeat, minBeat), entry.def.timing);
+    this.baseTargetBeat = alignPlacementTimingAtOrAfter(
+      Math.max(safeCurrentBeat, minBeat),
+      entry,
+      entry.def,
+    );
     return this.baseTargetBeat;
   }
 
@@ -395,7 +425,11 @@ export class BeatTrack {
     const nextEntry = this.currentEntry;
     const didWrap = this.isWrapTransition(previousIndex, this.currentIndex);
     const gap = this.getTransitionGap(previousIndex, this.currentIndex);
-    const nextTargetBeat = alignTimingAtOrAfter(safeTargetBeat + gap, nextEntry.def.timing);
+    const nextTargetBeat = alignPlacementTimingAtOrAfter(
+      safeTargetBeat + gap,
+      nextEntry,
+      nextEntry.def,
+    );
     const reloadReleaseBeat = didWrap ? safeTargetBeat + TRACK_RELOAD_BEATS : null;
     this.reloadUntilBeat = reloadReleaseBeat;
     this.readyAfterBeat = didWrap ? reloadReleaseBeat : safeTargetBeat + HALF_BEAT;
@@ -415,7 +449,11 @@ export class BeatTrack {
       this.targetBeat = releaseBeat;
       return;
     }
-    this.baseTargetBeat = alignTimingAtOrAfter(releaseBeat, this.currentEntry.def.timing);
+    this.baseTargetBeat = alignPlacementTimingAtOrAfter(
+      releaseBeat,
+      this.currentEntry,
+      this.currentEntry.def,
+    );
     this.targetBeat = this.getTargetBeat(releaseBeat);
   }
 
@@ -446,7 +484,7 @@ export class BeatTrack {
 
       const next = this.createEntry(sorted[index]);
       const gap = this.getTransitionGap(previousIndex, index);
-      absoluteBeat = alignTimingAtOrAfter(absoluteBeat + gap, next.def.timing);
+      absoluteBeat = alignPlacementTimingAtOrAfter(absoluteBeat + gap, next, next.def);
     }
 
     return preview;
@@ -602,17 +640,17 @@ export class BeatTrack {
 
   addInventoryPiece(id) {
     if (id === "elapse") {
-      const pieces = this.allPieces;
-      const groupId = nextGroupId(pieces);
-      const leftUid = nextUid(pieces);
-      const rightUid = nextUid([...pieces, { uid: leftUid }]);
-      this.pieceOrder.push(leftUid, rightUid);
-      this.inventory.push(
-        { uid: leftUid, id: "elapse-left", upgraded: false, groupId },
-        { uid: rightUid, id: "elapse-right", upgraded: false, groupId },
-      );
+      const existingPieces = this.allPieces;
+      const groupId = nextGroupId(existingPieces);
+      const addedPieces = [];
+      getBulletPieces(id).forEach((def) => {
+        const uid = nextUid([...existingPieces, ...addedPieces]);
+        addedPieces.push({ uid, id: def.id, upgraded: false, groupId });
+      });
+      this.pieceOrder.push(...addedPieces.map((piece) => piece.uid));
+      this.inventory.push(...addedPieces);
       this.invalidatePieceCache();
-      this.selectedUid = leftUid;
+      this.selectedUid = addedPieces[0]?.uid ?? this.selectedUid;
       return;
     }
 

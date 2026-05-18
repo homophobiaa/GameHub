@@ -1,4 +1,5 @@
 import { BULLET_POOL, getBulletDef } from "../defs/bullets.js";
+import { CHIP_TUNING } from "../defs/chips.js";
 import { MAX_COMBO_CAP } from "./timing.js";
 import { pickRandom } from "../utils/random.js";
 
@@ -16,7 +17,7 @@ const STORE_DEFS = {
   wrecker: {
     id: "wrecker",
     name: "Wrecker",
-    copy: "Scrap one bullet into two inert chips.",
+    copy: `Scrap one bullet into ${CHIP_TUNING.chipsPerScrap} inert chip${CHIP_TUNING.chipsPerScrap === 1 ? "" : "s"}.`,
   },
   workshop: {
     id: "workshop",

@@ -301,6 +301,12 @@ export function planHitLine(enemies, lane, amount, currentBeat, maxTargets = 1, 
       y: impactY,
       secondary,
     });
+    const impactKnockback = options.knockbackForImpact?.({
+      hitIndex,
+      target,
+      damageTarget,
+      secondary,
+    });
     const impact = {
       targetId: damageTarget.id,
       guardedTargetId: interceptor ? target.id : null,
@@ -311,12 +317,8 @@ export function planHitLine(enemies, lane, amount, currentBeat, maxTargets = 1, 
       y: impactY,
       amount: impactAmount,
       secondary,
-      knockback: options.knockbackForImpact?.({
-        hitIndex,
-        target,
-        damageTarget,
-        secondary,
-      }),
+      knockback: impactKnockback,
+      knockbackTargetId: interceptor && Number.isFinite(impactKnockback) ? target.id : null,
       guard: Boolean(interceptor),
       countsForPierce: !(result.passedThrough && !interceptor),
     };
@@ -417,7 +419,7 @@ export function hitShellLine(enemies, lane, amount, knockback, currentBeat, even
       continue;
     }
 
-    knockEnemyBack(damageTarget, knockback);
+    knockEnemyBack(interceptor ? target : damageTarget, knockback);
     if (!result.killed) {
       break;
     }
@@ -475,6 +477,7 @@ export function planShellLine(enemies, lane, amount, knockback, currentBeat, opt
       y: target.y,
       amount: remainingDamage,
       knockback,
+      knockbackTargetId: interceptor && Number.isFinite(knockback) ? target.id : null,
       guard: Boolean(interceptor),
       countsForPierce: !result.passedThrough,
     };
@@ -500,8 +503,18 @@ export function planShellLine(enemies, lane, amount, knockback, currentBeat, opt
 
     if (!result.killed) {
       const extraPierceCount = Math.max(0, options.extraPierceCount ?? 0);
-      const secondaryAmount = Math.max(0, remainingDamage * (options.secondaryDamageFraction ?? 0));
-      for (let extraIndex = 0; extraIndex < extraPierceCount && secondaryAmount > 0.01; extraIndex += 1) {
+      for (let extraIndex = 0; extraIndex < extraPierceCount; extraIndex += 1) {
+        const damageFraction = typeof options.secondaryDamageFraction === "function"
+          ? options.secondaryDamageFraction(extraIndex)
+          : options.secondaryDamageFraction ?? 0;
+        const knockbackFraction = typeof options.secondaryKnockbackFraction === "function"
+          ? options.secondaryKnockbackFraction(extraIndex)
+          : options.secondaryKnockbackFraction ?? damageFraction;
+        const secondaryAmount = Math.max(0, remainingDamage * damageFraction);
+        if (secondaryAmount <= 0.01) {
+          break;
+        }
+
         const secondaryTarget = laneEnemies(enemyIndex, lane).find((enemy) => !touched.has(enemy));
         if (!secondaryTarget) {
           break;
@@ -536,7 +549,10 @@ export function planShellLine(enemies, lane, amount, knockback, currentBeat, opt
           lane: secondaryTarget.lane,
           y: secondaryTarget.y,
           amount: secondaryAmount,
-          knockback: knockback * (options.secondaryKnockbackFraction ?? options.secondaryDamageFraction ?? 0),
+          knockback: knockback * knockbackFraction,
+          knockbackTargetId: secondaryInterceptor && Number.isFinite(knockback * knockbackFraction)
+            ? secondaryTarget.id
+            : null,
           secondary: true,
           guard: Boolean(secondaryInterceptor),
           countsForPierce: !secondaryResult.passedThrough,

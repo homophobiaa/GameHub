@@ -6,6 +6,7 @@ import {
   getSlotName,
   isElapsePiece,
 } from "../defs/bullets.js";
+import { CHIP_TUNING } from "../defs/chips.js";
 import { getAspectForSource } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
 import { BeatTrack } from "../systems/track.js";
@@ -34,14 +35,18 @@ import {
   BEAT_BURST_SECONDS,
   BEAT_FLASH_SECONDS,
   ASPECT_SPREAD_TARGET_COUNT,
+  ENEMY_BREACH_Y,
   GOOD_WINDOW_BEATS,
   STARTING_HEALTH,
+  TRACK_WAVE_START_LEAD_BEATS,
 } from "../config/gameplay.js";
 import { GameRenderer } from "../render/GameRenderer.js";
 import { BeatBarView, markerOffsetPercent } from "../ui/beatBarView.js";
 import { appendCombatEvents } from "../ui/combatEventView.js";
 import { IntermissionView } from "../ui/intermissionView.js";
+import { playShockwaveScreenEffect } from "../ui/screenEffects.js";
 import { DOMAIN_EDGE_VISUAL_GAP } from "../ui/timelineMetrics.js";
+import { updateWaveProgressView } from "../ui/waveProgressView.js";
 import { EPSILON, isOnBeat, nextHalfBeatAfter, snapToQuarterBeat } from "../utils/beatMath.js";
 import { clamp } from "../utils/math.js";
 import { MenuScene } from "./MenuScene.js";
@@ -146,11 +151,6 @@ export class GameScene {
       </div>
       <div class="canvas-wrap">
         <canvas class="game-canvas"></canvas>
-        <div class="lane-buttons">
-          <button class="lane-button" data-lane="0">Left</button>
-          <button class="lane-button" data-lane="1">Mid</button>
-          <button class="lane-button" data-lane="2">Right</button>
-        </div>
         <div class="overlay" data-overlay></div>
       </div>
       <footer class="wave-progress" data-wave-progress></footer>
@@ -160,7 +160,6 @@ export class GameScene {
     this.renderer = new GameRenderer(this.canvas);
     this.overlay = this.el.querySelector("[data-overlay]");
     this.intermissionView = new IntermissionView(this.overlay);
-    this.laneButtons = this.el.querySelector(".lane-buttons");
     this.screenEffects = this.el.querySelector("[data-screen-effects]");
     this.progressEl = this.el.querySelector("[data-wave-progress]");
     this.beatCount = this.el.querySelector("[data-beat-count]");
@@ -184,7 +183,6 @@ export class GameScene {
     this.overlay.addEventListener("drop", this.onDrop);
     this.overlay.addEventListener("dragend", this.onDragEnd);
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
-    this.laneButtons.addEventListener("pointerdown", this.onLaneButtonPointerDown);
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("pointerup", this.onPointerUp);
@@ -929,7 +927,11 @@ export class GameScene {
       width: 18,
       height: 36,
     };
-    const chipGhosts = [-13, 13].map((offset) =>
+    const chipOffsets = Array.from(
+      { length: CHIP_TUNING.chipsPerScrap },
+      (_, index) => (index - (CHIP_TUNING.chipsPerScrap - 1) / 2) * 26,
+    );
+    const chipGhosts = chipOffsets.map((offset) =>
       this.createChipGhost({ ...chipRect, left: chipRect.left + offset }, snapshot.color)
     );
 
@@ -1263,7 +1265,7 @@ export class GameScene {
   }
 
   createScrapChips(piece) {
-    return Array.from({ length: 2 }, () => {
+    return Array.from({ length: CHIP_TUNING.chipsPerScrap }, () => {
       this.scrapChipSerial += 1;
       return {
         uid: `chip-${this.scrapChipSerial}`,
@@ -1315,7 +1317,7 @@ export class GameScene {
       choices: [],
       scrappableCount: remainingScrappable,
     };
-    this.editorMessage = `Scrapped ${scrappedName} into 2 chips.`;
+    this.editorMessage = `Scrapped ${scrappedName} into ${CHIP_TUNING.chipsPerScrap} chip${CHIP_TUNING.chipsPerScrap === 1 ? "" : "s"}.`;
 
     if (this.storePicks <= 0 || remainingScrappable === 0) {
       const leftoverPicks = Math.max(0, this.storePicks);
@@ -1365,18 +1367,6 @@ export class GameScene {
       return;
     }
 
-    this.pointerLane = lane;
-    this.fireLane(lane);
-  };
-
-  onLaneButtonPointerDown = (event) => {
-    const laneButton = event.target.closest("[data-lane]");
-    if (!laneButton) {
-      return;
-    }
-
-    event.preventDefault();
-    const lane = Number(laneButton.dataset.lane);
     this.pointerLane = lane;
     this.fireLane(lane);
   };
@@ -1476,14 +1466,21 @@ export class GameScene {
     this.suppressBeatBullets = false;
     this.progressEl?.classList.remove("is-complete-flash");
     this.beatStrip?.classList.remove("is-winding-down");
-    this.track.start(this.beat);
-    this.beatBarView?.clearMotion();
-    this.lastWholeBeat = Math.floor(this.beat);
+    this.prepareTrackForWaveStart();
     this.waveRunner.start(this.waveIndex, this.beat, {
       enemyPool: this.enemyPool,
       healthMultiplier: this.enemyHealthMultiplier(),
       aspectGrantors: this.aspectGrantors,
     });
+  }
+
+  prepareTrackForWaveStart() {
+    this.beat = Math.max(0, Math.ceil(this.beat - EPSILON));
+    this.track.start(this.beat, {
+      startDelayBeats: TRACK_WAVE_START_LEAD_BEATS,
+    });
+    this.beatBarView?.clearMotion();
+    this.lastWholeBeat = Math.floor(this.beat);
   }
 
   showIntermission(isFirst = false) {
@@ -1614,7 +1611,12 @@ export class GameScene {
 
       enemy.y = Math.max(0.05, enemy.y - knockback);
     });
-    this.playShockwaveEffect();
+    playShockwaveScreenEffect({
+      screenEffects: this.screenEffects,
+      sceneEl: this.el,
+      canvas: this.canvas,
+      renderer: this.renderer,
+    });
     this.floaters.push({
       lane: 1,
       y: 0.88,
@@ -1623,26 +1625,6 @@ export class GameScene {
       ttl: 0.7,
     });
     return true;
-  }
-
-  playShockwaveEffect() {
-    if (!this.screenEffects || !this.el || !this.canvas || !this.renderer) {
-      return;
-    }
-
-    const sceneRect = this.el.getBoundingClientRect();
-    const canvasRect = this.canvas.getBoundingClientRect();
-    const x = canvasRect.left - sceneRect.left + this.renderer.arena.x + this.renderer.arena.width / 2;
-    const y = canvasRect.top - sceneRect.top + this.renderer.yToScreen(0.9);
-    const finalDiameter = Math.hypot(sceneRect.width, sceneRect.height) * 2;
-    const startSize = 46;
-    const ring = document.createElement("span");
-    ring.className = "shockwave-screen-ring";
-    ring.style.left = `${x}px`;
-    ring.style.top = `${y}px`;
-    ring.style.setProperty("--shockwave-scale", `${finalDiameter / startSize}`);
-    this.screenEffects.append(ring);
-    ring.addEventListener("animationend", () => ring.remove(), { once: true });
   }
 
   beginWaveClearOutro() {
@@ -1723,7 +1705,7 @@ export class GameScene {
         movementDt;
       enemy.visualY ??= enemy.y;
       enemy.visualY += (enemy.y - enemy.visualY) * Math.min(1, dt * 9);
-      if (enemy.y >= 1) {
+      if (enemy.y >= ENEMY_BREACH_Y) {
         enemy.hp = 0;
         if (this.canTakeDamage()) {
           this.health -= 1;
@@ -1731,7 +1713,7 @@ export class GameScene {
         }
         this.floaters.push({
           lane: enemy.lane,
-          y: 0.92,
+          y: ENEMY_BREACH_Y,
           text: "breach",
           color: "#e65d5d",
           ttl: 0.8,
@@ -1916,7 +1898,9 @@ export class GameScene {
       targetId: start.targetId,
       guardId: start.guardId,
       damageMultiplier,
-      slowMultiplier: shot.entry.upgraded || rightPlacement.upgraded ? 0.7 : 1,
+      slowMultiplier: shot.entry.upgraded || rightPlacement.upgraded
+        ? getBulletDef("elapse").upgradedSlowMultiplier ?? 0.7
+        : 1,
       secondaryTargetId: start.secondaryTargetId,
       secondaryDamagePerBeat: start.secondaryDamagePerBeat,
       secondarySlowMultiplier: start.secondarySlowMultiplier,
@@ -2420,66 +2404,16 @@ export class GameScene {
   }
 
   updateWaveProgressTracker(dt = 0) {
-    if (!this.progressEl) {
-      return;
-    }
-
     const progress = this.waveRunner.getProgress(this.waveKills, this.enemies);
-    const total = progress.total;
-    const targetRatio = this.waveClearOutro
-      ? 1
-      : total > 0
-        ? clamp(progress.spawned / total, 0, 1)
-        : 0;
-    const catchup = dt > 0 ? clamp(dt * 5.5, 0, 1) : 1;
-    this.visualWaveProgress = targetRatio >= this.visualWaveProgress
-      ? this.visualWaveProgress + (targetRatio - this.visualWaveProgress) * catchup
-      : this.visualWaveProgress;
-    if (Math.abs(this.visualWaveProgress - targetRatio) < 0.005) {
-      this.visualWaveProgress = Math.max(this.visualWaveProgress, targetRatio);
-    }
-    const ratio = clamp(this.visualWaveProgress, 0, 1);
-    const label = progress.active
-      ? `${progress.spawned}/${total} spawned`
-      : `Wave ${this.waveIndex + 1} ready`;
-    const detail = progress.active
-      ? `${progress.kills} defeated | ${progress.alive} alive${progress.pendingPatterns ? ` | ${progress.pendingPatterns} pattern${progress.pendingPatterns === 1 ? "" : "s"}` : ""}`
-      : "Start a wave to track kills.";
-    const contentStamp = [
-      progress.active ? 1 : 0,
-      this.waveClearOutro ? 1 : 0,
-      this.waveIndex,
-      progress.spawned,
-      total,
-      progress.kills,
-      progress.alive,
-      progress.pendingPatterns,
-    ].join("|");
-
-    this.progressEl.classList.toggle("is-complete-flash", this.waveProgressFlashTtl > 0);
-
-    if (this.progressEl.dataset.stamp === contentStamp) {
-      const fill = this.progressEl.querySelector("[data-progress-fill]");
-      if (fill) {
-        fill.style.width = `${ratio * 100}%`;
-      }
-      return;
-    }
-
-    this.progressEl.dataset.stamp = contentStamp;
-    this.progressEl.innerHTML = `
-      <div class="wave-progress-copy">
-        <span>Wave ${this.waveIndex + 1}</span>
-        <small>${label}</small>
-      </div>
-      <div class="wave-progress-bar" aria-label="${label}">
-        <span data-progress-fill style="width:${ratio * 100}%"></span>
-      </div>
-      <div class="wave-progress-copy is-right">
-        <span>${Math.round(ratio * 100)}%</span>
-        <small>${detail}</small>
-      </div>
-    `;
+    this.visualWaveProgress = updateWaveProgressView({
+      el: this.progressEl,
+      dt,
+      progress,
+      waveIndex: this.waveIndex,
+      waveClearOutro: this.waveClearOutro,
+      flashTtl: this.waveProgressFlashTtl,
+      visualProgress: this.visualWaveProgress,
+    });
   }
 
   render() {
@@ -2508,7 +2442,6 @@ export class GameScene {
     this.overlay?.removeEventListener("dragend", this.onDragEnd);
     this.endDragProxy();
     this.canvas?.removeEventListener("pointerdown", this.onPointerDown);
-    this.laneButtons?.removeEventListener("pointerdown", this.onLaneButtonPointerDown);
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("pointerup", this.onPointerUp);

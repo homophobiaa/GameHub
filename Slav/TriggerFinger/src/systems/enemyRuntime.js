@@ -2,6 +2,7 @@ import { getAspectDef, getAspectForSource } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
 import {
   LANES,
+  LEAP_FALLBACK_TARGET_Y,
   LEAP_LANDING_OFFSET,
   LEAP_MAX_LANDING_Y,
   LEAP_MIN_TARGET_Y,
@@ -134,13 +135,13 @@ function setLeapTarget(enemy, target, beat) {
 
 function setLeapFallback(enemy, beat) {
   const leap = enemy.leap;
-  if (leap.targetId === null && leap.destinationY === LEAP_MIN_TARGET_Y) {
+  if (leap.targetId === null && leap.destinationY === LEAP_FALLBACK_TARGET_Y) {
     return;
   }
 
   leap.targetId = null;
-  leap.targetY = LEAP_MIN_TARGET_Y;
-  leap.destinationY = LEAP_MIN_TARGET_Y;
+  leap.targetY = LEAP_FALLBACK_TARGET_Y;
+  leap.destinationY = LEAP_FALLBACK_TARGET_Y;
   readjustLeapArc(enemy, beat);
 }
 

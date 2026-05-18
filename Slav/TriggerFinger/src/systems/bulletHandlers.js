@@ -12,14 +12,18 @@ import {
   planHitLine,
   planShellLine,
 } from "./combatPrimitives.js";
-import { getBulletDef } from "../defs/bullets.js";
 import {
   LANE_COUNT,
   PIERCING_PROJECTILE_MIN_STAGE_SECONDS,
   PIERCING_PROJECTILE_TARGET_OFFSET_BEATS,
 } from "../config/gameplay.js";
-
-const CHIP_FALLOFF = 1 / 3;
+import {
+  hasLineChipModifiers,
+  secondaryChipAmount,
+  secondaryChipDotDamage,
+  secondaryChipScale,
+  summarizeChipEffects,
+} from "./chipEffects.js";
 
 function reflectedLane(sourceLane, nextLane) {
   if (nextLane < 0 || nextLane >= LANE_COUNT) {
@@ -47,22 +51,17 @@ function getPiercingStageDelaySeconds({ stageCount, currentBeat, targetBeat, bea
   );
 }
 
-function summarizeChipEffects(chipEffects = []) {
-  const shell = getBulletDef("shell");
-  return {
-    stingerPierce: chipEffects.filter((chip) => chip.sourceId === "stinger").length,
-    shellKnockback: chipEffects
-      .filter((chip) => chip.sourceId === "shell")
-      .reduce((sum, chip) => sum + (chip.sourceUpgraded ? shell.knockback * 1.6 : shell.knockback) * CHIP_FALLOFF, 0),
-  };
-}
-
-function hasLineModifiers(chipSummary) {
-  return chipSummary.stingerPierce > 0 || chipSummary.shellKnockback > 0;
-}
-
 function lineAmount(primaryAmount, secondaryAmount, primaryHits = 1) {
-  return ({ hitIndex }) => hitIndex < primaryHits ? primaryAmount : secondaryAmount;
+  return ({ hitIndex }) => {
+    if (hitIndex < primaryHits) {
+      return primaryAmount;
+    }
+
+    const secondaryIndex = hitIndex - primaryHits;
+    return typeof secondaryAmount === "function"
+      ? secondaryAmount(secondaryIndex)
+      : secondaryAmount;
+  };
 }
 
 function lineOptions({ chipSummary, primaryHits = 1, effectsForImpact = null }) {
@@ -106,7 +105,11 @@ const BULLET_HANDLERS = {
     const result = planHitLine(
       enemies,
       lane,
-      lineAmount(scale(def.damage), scale(def.damage) * CHIP_FALLOFF, baseTargets),
+      lineAmount(
+        scale(def.damage),
+        (secondaryIndex) => secondaryChipAmount(scale(def.damage), chipSummary, secondaryIndex),
+        baseTargets,
+      ),
       currentBeat,
       maxTargets,
       lineOptions({ chipSummary, primaryHits: baseTargets }),
@@ -130,15 +133,15 @@ const BULLET_HANDLERS = {
     const result = planShellLine(
       enemies,
       lane,
-      scale(def.damage),
-      baseKnockback + chipSummary.shellKnockback,
-      currentBeat,
-      {
-        extraPierceCount: chipSummary.stingerPierce,
-        secondaryDamageFraction: CHIP_FALLOFF,
-        secondaryKnockbackFraction: CHIP_FALLOFF,
-      },
-    );
+        scale(def.damage),
+        baseKnockback + chipSummary.shellKnockback,
+        currentBeat,
+        {
+          extraPierceCount: chipSummary.stingerPierce,
+          secondaryDamageFraction: (secondaryIndex) => secondaryChipScale(chipSummary, secondaryIndex),
+          secondaryKnockbackFraction: (secondaryIndex) => secondaryChipScale(chipSummary, secondaryIndex),
+        },
+      );
     addPiercingProjectile(
       events,
       lane,
@@ -155,20 +158,23 @@ const BULLET_HANDLERS = {
     const chipSummary = summarizeChipEffects(chipEffects);
     const radius = slot.upgraded ? def.upgradedSplashRadius : def.splashRadius;
     const splashDamage = scale(slot.upgraded ? def.splashDamage * 1.5 : def.splashDamage);
-    if (hasLineModifiers(chipSummary)) {
+    if (hasLineChipModifiers(chipSummary)) {
       const result = planHitLine(
         enemies,
         lane,
-        lineAmount(scale(def.damage), scale(def.damage) * CHIP_FALLOFF),
+        lineAmount(
+          scale(def.damage),
+          (secondaryIndex) => secondaryChipAmount(scale(def.damage), chipSummary, secondaryIndex),
+        ),
         currentBeat,
         1 + chipSummary.stingerPierce,
         lineOptions({
           chipSummary,
-          effectsForImpact: ({ secondary }) => [{
+          effectsForImpact: ({ secondary, hitIndex }) => [{
             kind: "horizontalBand",
             color: def.color,
-            radius: secondary ? radius * CHIP_FALLOFF : radius,
-            amount: secondary ? splashDamage * CHIP_FALLOFF : splashDamage,
+            radius: secondary ? secondaryChipAmount(radius, chipSummary, hitIndex - 1) : radius,
+            amount: secondary ? secondaryChipAmount(splashDamage, chipSummary, hitIndex - 1) : splashDamage,
           }],
         }),
       );
@@ -190,11 +196,14 @@ const BULLET_HANDLERS = {
 
   pair({ def, slot, lane, enemies, currentBeat, targetBeat, beatSeconds, echoAnchorBeat, events, scale, chipEffects, scheduleEcho }) {
     const chipSummary = summarizeChipEffects(chipEffects);
-    if (hasLineModifiers(chipSummary)) {
+    if (hasLineChipModifiers(chipSummary)) {
       const result = planHitLine(
         enemies,
         lane,
-        lineAmount(scale(def.damage), scale(def.damage) * CHIP_FALLOFF),
+        lineAmount(
+          scale(def.damage),
+          (secondaryIndex) => secondaryChipAmount(scale(def.damage), chipSummary, secondaryIndex),
+        ),
         currentBeat,
         1 + chipSummary.stingerPierce,
         lineOptions({ chipSummary }),
@@ -229,19 +238,22 @@ const BULLET_HANDLERS = {
     const chipSummary = summarizeChipEffects(chipEffects);
     const lanes = [lane - 1, lane, lane + 1].map((nextLane) => reflectedLane(lane, nextLane));
 
-    if (hasLineModifiers(chipSummary)) {
+    if (hasLineChipModifiers(chipSummary)) {
       lanes.forEach((nextLane) => {
         const result = planHitLine(
           enemies,
           nextLane,
-          lineAmount(scale(def.damage), scale(def.damage) * CHIP_FALLOFF),
+          lineAmount(
+            scale(def.damage),
+            (secondaryIndex) => secondaryChipAmount(scale(def.damage), chipSummary, secondaryIndex),
+          ),
           currentBeat,
           1 + chipSummary.stingerPierce,
           lineOptions({
             chipSummary,
-            effectsForImpact: ({ secondary }) => [{
+            effectsForImpact: ({ secondary, hitIndex }) => [{
               kind: "dot",
-              damage: secondary ? Math.ceil(def.dotDamage * CHIP_FALLOFF) : def.dotDamage,
+              damage: secondary ? secondaryChipDotDamage(def.dotDamage, chipSummary, hitIndex - 1) : def.dotDamage,
               durationSeconds: (slot.upgraded ? def.upgradedDotDurationBeats : def.dotDurationBeats) * beatSeconds,
               source: def.id,
             }],
@@ -275,7 +287,10 @@ const BULLET_HANDLERS = {
     const result = planHitLine(
       enemies,
       lane,
-      lineAmount(scale(def.damage), scale(def.damage) * CHIP_FALLOFF),
+      lineAmount(
+        scale(def.damage),
+        (secondaryIndex) => secondaryChipAmount(scale(def.damage), chipSummary, secondaryIndex),
+      ),
       currentBeat,
       1 + chipSummary.stingerPierce,
       lineOptions({ chipSummary }),

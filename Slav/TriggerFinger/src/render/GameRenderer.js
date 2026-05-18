@@ -1,59 +1,10 @@
 import { getAspectDef, getAspectForSource } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
-import { COMBO_METER } from "../config/comboMeter.js";
-import { ASPECT_SPREAD_TRAIL_ARC_PIXELS, LANE_COUNT, LANES } from "../config/gameplay.js";
+import { ASPECT_SPREAD_TRAIL_ARC_PIXELS, ENEMY_BREACH_Y, LANE_COUNT, LANES } from "../config/gameplay.js";
 import { beatPhase } from "../utils/beatMath.js";
 import { clamp } from "../utils/math.js";
-
-function hexToRgb(hex) {
-  const clean = String(hex).replace("#", "");
-  const value = Number.parseInt(clean.length === 3
-    ? clean.split("").map((part) => part + part).join("")
-    : clean, 16);
-
-  return {
-    r: (value >> 16) & 255,
-    g: (value >> 8) & 255,
-    b: value & 255,
-  };
-}
-
-function mixHex(a, b, amount) {
-  const from = hexToRgb(a);
-  const to = hexToRgb(b);
-  const mix = (start, end) => Math.round(start + (end - start) * amount);
-  return `rgb(${mix(from.r, to.r)}, ${mix(from.g, to.g)}, ${mix(from.b, to.b)})`;
-}
-
-function easeInOut(progress) {
-  const t = clamp(progress, 0, 1);
-  return t * t * (3 - 2 * t);
-}
-
-function pulseSinceBeat(phase, anchor, strength) {
-  const { attackBeats, decayBeats, attackCurve, decayCurve } = COMBO_METER.visualizer;
-  const elapsed = phase >= anchor ? phase - anchor : phase + 1 - anchor;
-  if (elapsed > attackBeats + decayBeats) {
-    return 0;
-  }
-
-  if (elapsed < attackBeats) {
-    const attackProgress = elapsed / attackBeats;
-    return strength * (1 - (1 - attackProgress) ** attackCurve);
-  }
-
-  const decayProgress = (elapsed - attackBeats) / decayBeats;
-  return strength * (1 - decayProgress) ** decayCurve;
-}
-
-function getComboVisualizerPulse(beat) {
-  const { beatStrength, offbeatStrength, offbeatAnchor } = COMBO_METER.visualizer;
-  const phase = beatPhase(beat);
-  return Math.max(
-    pulseSinceBeat(phase, 0, beatStrength),
-    pulseSinceBeat(phase, offbeatAnchor, offbeatStrength),
-  );
-}
+import { drawComboMeter } from "./comboMeterRenderer.js";
+import { easeInOut, mixHex } from "./renderUtils.js";
 
 export class GameRenderer {
   constructor(canvas) {
@@ -101,7 +52,7 @@ export class GameRenderer {
 
     this.ctx.clearRect(0, 0, this.width, this.height);
     this.drawArena(track, beat);
-    this.drawComboMeter(comboMultiplier, comboCap, beat);
+    drawComboMeter(this, comboMultiplier, comboCap, beat);
     this.drawSpawnWarnings(spawnWarnings, beat);
     this.drawSpeedBoosts(speedBoosts, beat);
     this.drawEffects(effects);
@@ -125,151 +76,6 @@ export class GameRenderer {
 
   yToScreen(y) {
     return y * (this.height - 72) + 24;
-  }
-
-  drawComboMeter(comboMultiplier, comboCap, beat) {
-    const capExtra = Math.max(0, comboCap - 1);
-    if (capExtra <= 0) {
-      return;
-    }
-
-    const comboExtra = clamp(comboMultiplier - 1, 0, capExtra);
-    const visualizerPulse = getComboVisualizerPulse(beat);
-    const pairCount = Math.ceil(capExtra);
-    const topY = 24 + COMBO_METER.verticalMargin;
-    const bottomY = this.yToScreen(0.9) - COMBO_METER.verticalMargin;
-    const playHeight = bottomY - topY;
-    const sideGutter = Math.max(0, this.arena.x - COMBO_METER.sideGutterInset);
-    const arenaGap = Math.min(
-      COMBO_METER.arenaGap.preferred,
-      Math.max(COMBO_METER.arenaGap.min, sideGutter * COMBO_METER.arenaGap.gutterScale),
-    );
-    const availableForBars = Math.max(
-      COMBO_METER.barWidth.min,
-      sideGutter - arenaGap - COMBO_METER.barGap * Math.max(0, pairCount - 1),
-    );
-    const barWidth = clamp(
-      availableForBars / pairCount,
-      COMBO_METER.barWidth.min,
-      COMBO_METER.barWidth.max,
-    );
-    const fillWidth = Math.max(COMBO_METER.minFillWidth, barWidth - COMBO_METER.fillInset);
-
-    for (let index = 0; index < pairCount; index += 1) {
-      const capSegment = clamp(capExtra - index, 0, 1);
-      const comboSegment = clamp(comboExtra - index, 0, capSegment);
-      const visualizerSegment = comboSegment * visualizerPulse;
-      if (capSegment <= 0) {
-        continue;
-      }
-
-      const offset = index * (barWidth + COMBO_METER.barGap);
-      const leftX = this.arena.x - arenaGap - barWidth - offset;
-      const rightX = this.arena.x + this.arena.width + arenaGap + offset;
-      this.drawComboBar(
-        leftX,
-        topY,
-        bottomY,
-        playHeight,
-        barWidth,
-        fillWidth,
-        capSegment,
-        comboSegment,
-        visualizerSegment,
-      );
-      this.drawComboBar(
-        rightX,
-        topY,
-        bottomY,
-        playHeight,
-        barWidth,
-        fillWidth,
-        capSegment,
-        comboSegment,
-        visualizerSegment,
-      );
-    }
-  }
-
-  drawComboBar(
-    x,
-    topY,
-    bottomY,
-    playHeight,
-    barWidth,
-    fillWidth,
-    capSegment,
-    comboSegment,
-    visualizerSegment,
-  ) {
-    const ctx = this.ctx;
-    const capHeight = playHeight * capSegment;
-    const capTop = bottomY - capHeight;
-    const fillHeight = playHeight * comboSegment;
-    const fillTop = bottomY - fillHeight;
-    const fillX = x + (barWidth - fillWidth) / 2;
-    const visualizerWidth = Math.min(barWidth, fillWidth + COMBO_METER.visualizerWidthBonus);
-    const visualizerHeight = playHeight * visualizerSegment;
-    const visualizerTop = bottomY - visualizerHeight;
-    const visualizerX = x + (barWidth - visualizerWidth) / 2;
-
-    ctx.save();
-
-    const capGradient = ctx.createLinearGradient(0, capTop, 0, bottomY);
-    capGradient.addColorStop(0, "#6b4a13");
-    capGradient.addColorStop(0.48, "#3b260b");
-    capGradient.addColorStop(1, "#160f08");
-    ctx.fillStyle = capGradient;
-    ctx.globalAlpha = 0.92;
-    ctx.beginPath();
-    ctx.roundRect(x, capTop, barWidth, capHeight, 3);
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(255, 235, 164, 0.32)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    if (visualizerSegment > 0) {
-      const visualizerGradient = ctx.createLinearGradient(0, visualizerTop, 0, bottomY);
-      visualizerGradient.addColorStop(0, "#baff6f");
-      visualizerGradient.addColorStop(0.35, "#4dff7a");
-      visualizerGradient.addColorStop(1, "#118b45");
-      ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha = 0.74;
-      ctx.shadowColor = "#4dff7a";
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = visualizerGradient;
-      ctx.beginPath();
-      ctx.roundRect(visualizerX, visualizerTop, visualizerWidth, visualizerHeight, 3);
-      ctx.fill();
-      ctx.globalCompositeOperation = "source-over";
-      ctx.shadowBlur = 0;
-    }
-
-    if (comboSegment > 0) {
-      const fillGradient = ctx.createLinearGradient(0, fillTop, 0, bottomY);
-      fillGradient.addColorStop(0, "#fff37a");
-      fillGradient.addColorStop(0.45, "#ffd21f");
-      fillGradient.addColorStop(1, "#b06e00");
-      ctx.globalAlpha = 1;
-      ctx.shadowColor = "#ffd21f";
-      ctx.shadowBlur = 8;
-      ctx.fillStyle = fillGradient;
-      ctx.beginPath();
-      ctx.roundRect(fillX, fillTop, fillWidth, fillHeight, 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
-
-    ctx.globalAlpha = 0.95;
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x - 1, capTop);
-    ctx.lineTo(x + barWidth + 1, capTop);
-    ctx.stroke();
-
-    ctx.restore();
   }
 
   drawArena(track, beat) {
@@ -296,13 +102,13 @@ export class GameRenderer {
     ctx.strokeStyle = "#f3bf4d";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(this.arena.x, this.yToScreen(0.9));
-    ctx.lineTo(this.arena.x + this.arena.width, this.yToScreen(0.9));
+    ctx.moveTo(this.arena.x, this.yToScreen(ENEMY_BREACH_Y));
+    ctx.lineTo(this.arena.x + this.arena.width, this.yToScreen(ENEMY_BREACH_Y));
     ctx.stroke();
 
     const phase = beatPhase(beat);
     const beatPulse = Math.max(0, 1 - phase / 0.24);
-    const targetY = this.yToScreen(0.9);
+    const targetY = this.yToScreen(ENEMY_BREACH_Y);
     ctx.fillStyle = `rgba(243, 191, 77, ${0.1 + beatPulse * 0.26})`;
     ctx.fillRect(
       this.arena.x,
@@ -323,7 +129,7 @@ export class GameRenderer {
     const delta = track.targetBeat - beat;
     const pulse = Math.max(0, 1 - Math.abs(delta) * 2);
     ctx.fillStyle = `rgba(243, 191, 77, ${0.08 + pulse * 0.16})`;
-    ctx.fillRect(this.arena.x, this.yToScreen(0.9) - 18, this.arena.width, 36);
+    ctx.fillRect(this.arena.x, this.yToScreen(ENEMY_BREACH_Y) - 18, this.arena.width, 36);
   }
 
   drawSpawnWarnings(warnings, beat) {
@@ -677,7 +483,7 @@ export class GameRenderer {
       const isSecondary = effect.secondary || path[index].secondary;
       ctx.globalAlpha = alpha * (isSecondary ? 0.46 : 1);
       ctx.lineWidth = effect.width ?? (isSecondary ? 4 : 8);
-      const fromY = index === 0 ? 0.9 : path[index - 1].y;
+      const fromY = index === 0 ? ENEMY_BREACH_Y : path[index - 1].y;
       const toY = path[index].y;
       ctx.beginPath();
       ctx.moveTo(x, this.yToScreen(fromY));
@@ -738,7 +544,7 @@ export class GameRenderer {
     ctx.globalAlpha = effect.secondary ? alpha * 0.55 : alpha;
     ctx.lineWidth = effect.width ?? (effect.secondary ? 5 : 8);
     ctx.beginPath();
-    ctx.moveTo(x, this.yToScreen(0.9));
+    ctx.moveTo(x, this.yToScreen(ENEMY_BREACH_Y));
     ctx.lineTo(x, this.yToScreen(effect.endY ?? 0.04));
     ctx.stroke();
     ctx.globalAlpha = 1;
@@ -752,7 +558,7 @@ export class GameRenderer {
     const ctx = this.ctx;
     beams.forEach((beam) => {
       const x = this.laneCenter(beam.lane);
-      const startY = this.yToScreen(0.9);
+      const startY = this.yToScreen(ENEMY_BREACH_Y);
       const endY = this.yToScreen(beam.targetY ?? 0.04);
       const pulse = 0.72 + Math.sin(beat * Math.PI * 4) * 0.18;
 

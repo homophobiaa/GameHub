@@ -1,10 +1,17 @@
 import { getEnemyDef } from "../defs/enemies.js";
-import { LANES, LEAP_MIN_TARGET_Y } from "../config/gameplay.js";
+import {
+  BARRIER_SPAWN_MAX_LANE_Y,
+  LANES,
+  LEAP_FALLBACK_TARGET_Y,
+  LEAP_MIN_TARGET_Y,
+} from "../config/gameplay.js";
 import { randomChoice } from "../utils/random.js";
 import { toEnemyFrameIndex } from "./enemyFrameIndex.js";
 
 const WARNING_BEATS = 1.25;
 const SETUP_WINDOW_BEATS = 8;
+const BARRIER_DELAY_BASIC_BEATS = 0.5;
+const BARRIER_RETRY_BEATS = 1.5;
 
 function makeScheduledSpawn(spawn) {
   return {
@@ -159,8 +166,9 @@ function aspectGrantorExtra(pattern, extra = {}) {
     : extra;
 }
 
-function activateCheerPack(pattern, localBeat, enemies) {
-  const eligibleLanes = lanesWithOtherLaneEnemies(enemies);
+function activateCheerPack(pattern, localBeat, enemies, { blockedLanes = [] } = {}) {
+  const blocked = new Set(blockedLanes);
+  const eligibleLanes = lanesWithOtherLaneEnemies(enemies).filter((lane) => !blocked.has(lane));
   if (eligibleLanes.length === 0) {
     return null;
   }
@@ -201,8 +209,24 @@ function barrierOpenLanes(blockedLanes = []) {
   return LANES.filter((lane) => !blocked.has(lane));
 }
 
-function createBarrierSetupPack(pattern, localBeat, blockedLanes) {
-  const lanes = barrierOpenLanes(blockedLanes);
+function barrierSafeLanes(enemies, blockedLanes = []) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  return barrierOpenLanes(blockedLanes).filter((lane) =>
+    !enemyIndex.liveInLane(lane).some((enemy) => enemy.y >= BARRIER_SPAWN_MAX_LANE_Y)
+  );
+}
+
+function pickLeastAdvancedLane(enemies, lanes) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  const ranked = lanes.map((lane) => ({
+    lane,
+    y: enemyIndex.frontLiveInLane(lane)?.y ?? 0,
+  }));
+  const lowestY = Math.min(...ranked.map((entry) => entry.y));
+  return randomChoice(ranked.filter((entry) => entry.y === lowestY)).lane;
+}
+
+function createBarrierSetupPack(pattern, localBeat, lanes) {
   if (lanes.length === 0) {
     return null;
   }
@@ -217,35 +241,62 @@ function createBarrierSetupPack(pattern, localBeat, blockedLanes) {
 }
 
 function activateBarrier(pattern, localBeat, enemies, { blockedLanes = [] } = {}) {
-  if (localBeat >= pattern.expiresBeat) {
-    return createBarrierSetupPack(pattern, localBeat, blockedLanes);
+  const safeLanes = barrierSafeLanes(enemies, blockedLanes);
+  if (safeLanes.length === 0) {
+    const openLanes = barrierOpenLanes(blockedLanes);
+    if (openLanes.length === 0) {
+      return null;
+    }
+
+    return {
+      spawns: [lockedSpawn(
+        localBeat + BARRIER_DELAY_BASIC_BEATS,
+        "basic",
+        pickLeastAdvancedLane(enemies, openLanes),
+      )],
+      done: false,
+      retryAfterBeat: localBeat + BARRIER_RETRY_BEATS,
+    };
   }
 
-  const blocked = new Set(blockedLanes);
   const crowdedLanes = lanesWithLiveCount(enemies, 2)
-    .filter((lane) => !blocked.has(lane));
-  if (crowdedLanes.length === 0) {
-    return null;
+    .filter((lane) => safeLanes.includes(lane));
+  if (crowdedLanes.length > 0) {
+    return [
+      lockedSpawn(
+        localBeat + pattern.warningBeats,
+        pattern.type,
+        randomChoice(crowdedLanes),
+        aspectGrantorExtra(pattern),
+      ),
+    ];
   }
 
-  return [
-    lockedSpawn(
-      localBeat + pattern.warningBeats,
-      pattern.type,
-      randomChoice(crowdedLanes),
-      aspectGrantorExtra(pattern),
-    ),
-  ];
+  if (localBeat >= pattern.expiresBeat) {
+    return createBarrierSetupPack(pattern, localBeat, safeLanes);
+  }
+
+  return null;
 }
 
 function closestToBase(enemies) {
   return toEnemyFrameIndex(enemies).closestToBase();
 }
 
+function createLeapFallbackSpawn(pattern, localBeat) {
+  const lane = Number.isInteger(pattern.lane) ? pattern.lane : randomChoice(LANES);
+  return [lockedSpawn(localBeat + pattern.warningBeats, pattern.type, lane, aspectGrantorExtra(pattern, {
+    leapTargetId: null,
+    leapTargetY: LEAP_FALLBACK_TARGET_Y,
+    leapFallback: true,
+  }))];
+}
+
 function activateLeap(pattern, localBeat, enemies, { priority = false, reservedTargetIds = new Set() } = {}) {
   const targets = leapTargets(enemies);
+  const fallbackAllowed = localBeat >= pattern.expiresBeat;
   if (targets.length === 0) {
-    return null;
+    return fallbackAllowed ? createLeapFallbackSpawn(pattern, localBeat) : null;
   }
 
   const laneTargets = targets.filter((enemy) =>
@@ -259,7 +310,7 @@ function activateLeap(pattern, localBeat, enemies, { priority = false, reservedT
   const lastTarget = targets.length === 1 && !reservedTargetIds.has(targets[0].id) ? targets[0] : null;
   const target = priorityTarget ?? regularTarget ?? lastTarget;
   if (!target) {
-    return null;
+    return fallbackAllowed ? createLeapFallbackSpawn(pattern, localBeat) : null;
   }
 
   return [lockedSpawn(localBeat + pattern.warningBeats, pattern.type, target.lane, aspectGrantorExtra(pattern, {
@@ -277,6 +328,7 @@ export function tryActivateEnemySpawnPattern(
     leapSeatAvailable = false,
     reservedLeapTargetIds = new Set(),
     blockedBarrierLanes = [],
+    blockedCheerLanes = [],
   },
 ) {
   if (pattern.kind !== "conditional") {
@@ -296,7 +348,9 @@ export function tryActivateEnemySpawnPattern(
   }
 
   const spawnsByPattern = {
-    cheerPack: () => activateCheerPack(pattern, localBeat, enemies),
+    cheerPack: () => activateCheerPack(pattern, localBeat, enemies, {
+      blockedLanes: blockedCheerLanes,
+    }),
     emptyLaneGhost: () => activateGhost(pattern, localBeat, enemies),
     regenSplit: () => activateRegen(pattern, localBeat, enemies),
     crowdedBarrier: () => activateBarrier(pattern, localBeat, enemies, {
@@ -307,9 +361,10 @@ export function tryActivateEnemySpawnPattern(
       reservedTargetIds: reservedLeapTargetIds,
     }),
   };
-  const spawns = spawnsByPattern[pattern.pattern]?.() ?? null;
+  const activation = spawnsByPattern[pattern.pattern]?.() ?? null;
+  const spawns = Array.isArray(activation) ? activation : activation?.spawns;
 
-  if (!spawns) {
+  if (!spawns?.length) {
     return {
       spawns: [],
       consumeCount: 0,
@@ -319,9 +374,10 @@ export function tryActivateEnemySpawnPattern(
 
   return {
     spawns,
-    consumeCount: spawns.length,
+    consumeCount: activation?.consumeCount ?? spawns.length,
     blockLaneUntilBeat: pattern.pattern === "emptyLaneGhost" ? spawns[0]?.beat : null,
     blockLane: pattern.pattern === "emptyLaneGhost" ? spawns[0]?.lane : null,
-    done: true,
+    retryAfterBeat: activation?.retryAfterBeat,
+    done: activation?.done ?? true,
   };
 }

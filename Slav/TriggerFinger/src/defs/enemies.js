@@ -43,7 +43,7 @@ export const ENEMY_DEFS = {
     id: "barrier",
     name: "Barrier",
     color: "#58a9ff",
-    hp: BASE_DAMAGE * 4,
+    hp: BASE_DAMAGE * 2.75,
     speed: 0.048,
     score: 190,
     interceptsPerBeat: 1,
@@ -53,10 +53,10 @@ export const ENEMY_DEFS = {
     id: "leap",
     name: "Leap",
     color: "#c8a174",
-    hp: BASE_DAMAGE * 3,
+    hp: BASE_DAMAGE * 2.75,
     speed: 0.074,
     score: 170,
-    description: "Vaults past a leading enemy before it can be targeted.",
+    description: "Vaults past the leading enemy before it can be targeted.",
   },
 };
 

@@ -368,26 +368,6 @@ input {
   touch-action: none;
 }
 
-.lane-buttons {
-  position: absolute;
-  z-index: 3;
-  right: auto;
-  bottom: 12px;
-  left: 50%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  width: min(560px, calc(100% - 32px));
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-.lane-button {
-  min-height: 44px;
-  background: rgba(20, 24, 31, 0.76);
-  pointer-events: auto;
-}
-
 .wave-progress {
   position: relative;
   z-index: 4;
@@ -1587,7 +1567,4 @@ input {
     grid-row: auto;
   }
 
-  .lane-buttons {
-    bottom: 8px;
-  }
 }

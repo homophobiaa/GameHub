@@ -25,7 +25,7 @@ export const ASPECT_DEFS = {
   hero: {
     id: "hero",
     source: "barrier",
-    name: "Heroism",
+    name: "Resolve",
     color: ENEMY_DEFS.barrier.color,
     interceptFraction: 0.2,
   },

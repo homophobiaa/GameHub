@@ -1,4 +1,9 @@
 import { getBulletDef } from "../defs/bullets.js";
+import {
+  elapseSecondaryDamagePerBeat,
+  elapseSecondarySlowMultiplier,
+  summarizeChipEffects,
+} from "./chipEffects.js";
 import { resolveBulletHandler } from "./bulletHandlers.js";
 import {
   addLaneProjectile,
@@ -91,7 +96,10 @@ export function resolvePiercingImpact({ impact, enemies, currentBeat }) {
     applyImpactEffects({ impact, target, enemies: enemyIndex, currentBeat, events });
   }
   if (Number.isFinite(impact.knockback) && !result.passedThrough) {
-    knockEnemyBack(target, impact.knockback);
+    const knockbackTarget = impact.knockbackTargetId
+      ? enemyIndex.findById(impact.knockbackTargetId)
+      : target;
+    knockEnemyBack(knockbackTarget, impact.knockback);
   }
 
   return events;
@@ -124,16 +132,6 @@ export function updateDamageOverTime(enemies, dt, currentBeat, events) {
   });
 }
 
-function summarizeChipEffects(chipEffects = []) {
-  const shell = getBulletDef("shell");
-  return {
-    stingerPierce: chipEffects.filter((chip) => chip.sourceId === "stinger").length,
-    shellKnockback: chipEffects
-      .filter((chip) => chip.sourceId === "shell")
-      .reduce((sum, chip) => sum + (chip.sourceUpgraded ? shell.knockback * 1.6 : shell.knockback) / 3, 0),
-  };
-}
-
 export function resolveElapseStart({
   lane,
   enemies,
@@ -156,18 +154,19 @@ export function resolveElapseStart({
   }
   const damageTarget = interceptor ?? intendedTarget;
   if (chipSummary.shellKnockback > 0) {
-    knockEnemyBack(damageTarget, chipSummary.shellKnockback);
+    knockEnemyBack(interceptor ? intendedTarget : damageTarget, chipSummary.shellKnockback);
   }
 
   const secondaryTarget = chipSummary.stingerPierce > 0
     ? elapseBeamEnemies(enemyIndex, lane).find((enemy) => enemy.id !== intendedTarget.id)
     : null;
   const def = getBulletDef("elapse-left");
+  const parentDef = getBulletDef("elapse");
   const secondaryDamagePerBeat = secondaryTarget
-    ? Math.ceil(def.damagePerBeat / 3) * damageMultiplier
+    ? elapseSecondaryDamagePerBeat(def.damagePerBeat) * damageMultiplier
     : 0;
   const secondarySlowMultiplier = secondaryTarget && upgraded
-    ? 1 - (1 - 0.7) / 3
+    ? elapseSecondarySlowMultiplier(parentDef.upgradedSlowMultiplier ?? 0.7)
     : 1;
 
   return {
@@ -259,7 +258,7 @@ export function resolveElapseFinish({
 
   const hit = hitClosestInLaneDetailed(enemyIndex, lane, amount, currentBeat, events);
   if (chipSummary.shellKnockback > 0 && hit.damageTarget && !hit.result?.passedThrough) {
-    knockEnemyBack(hit.damageTarget, chipSummary.shellKnockback);
+    knockEnemyBack(hit.target ?? hit.damageTarget, chipSummary.shellKnockback);
   }
   addLaneProjectile(events, lane, weak ? "#a86674" : def.color, weak, hit.target?.y ?? 0.04, weak ? 4 : 12);
   return events;

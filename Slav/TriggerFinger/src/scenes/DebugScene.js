@@ -225,6 +225,7 @@ export class DebugScene extends GameScene {
   playDebugWave() {
     this.waveIndex = Math.max(0, this.debugWaveNumber - 1);
     this.waveRunner = new WaveRunner();
+    this.prepareTrackForWaveStart();
     this.waveRunner.start(this.waveIndex, this.beat, {
       enemyPool: this.enemyPool,
       healthMultiplier: this.enemyHealthMultiplier(),
@@ -246,9 +247,6 @@ export class DebugScene extends GameScene {
     this.suppressBeatBullets = false;
     this.progressEl?.classList.remove("is-complete-flash");
     this.beatStrip?.classList.remove("is-winding-down");
-    this.track.start(this.beat);
-    this.beatBarView?.clearMotion();
-    this.lastWholeBeat = Math.floor(this.beat);
     this.editorMessage = `Playing wave ${this.debugWaveNumber}.`;
   }
 

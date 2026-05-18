@@ -1,16 +1,16 @@
 export const WAVE_DEFS = [
   {
     name: "Sight Line",
-    durationBeats: 24,
+    durationBeats: 17,
     spawns: [
       { beat: 0, type: "basic", lane: 1 },
-      { beat: 2, type: "basic", lane: 0 },
-      { beat: 4, type: "basic", lane: 2 },
+      { beat: 1.5, type: "basic", lane: 0 },
+      { beat: 3, type: "basic", lane: 2 },
+      { beat: 5, type: "basic", lane: "random" },
       { beat: 7, type: "basic", lane: "random" },
-      { beat: 10, type: "basic", lane: "random" },
-      { beat: 13, type: "basic", lane: "random" },
-      { beat: 17, type: "basic", lane: "random" },
-      { beat: 21, type: "basic", lane: "random" },
+      { beat: 9.5, type: "basic", lane: "random" },
+      { beat: 12, type: "basic", lane: "random" },
+      { beat: 14.5, type: "basic", lane: "random" },
     ],
   },
   {

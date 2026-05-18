@@ -73,7 +73,7 @@ export const BULLET_DEFS = {
     description: "Pings the closest enemies for light damage.",
     upgradeName: "Cover",
     upgradeDescription: "Pings a heap of enemies for light damage.",
-    upgradeHighlight: "a heap of enemies",
+    upgradeHighlight: "heap of enemies",
   },
   toxic: {
     id: "toxic",
@@ -98,43 +98,54 @@ export const BULLET_DEFS = {
     timing: "offbeat",
     leadBeats: 0.5,
     followBeats: 0.5,
+    upgradedSlowMultiplier: 0.6,
     description: "Hold the left half to fire a continuous beam, release the right half to finish it off.",
-    upgradeName: "Elapse+",
+    upgradeName: "Endure",
     upgradeDescription: "Hold the left half to fire a slowing beam, release the right half to finish it off.",
     upgradeHighlight: "slowing",
-  },
-  "elapse-left": {
-    id: "elapse-left",
-    name: "Elapse",
-    color: "#ed8ebc",
-    timing: "offbeat",
-    leadBeats: 0.5,
-    followBeats: 0,
-    damagePerBeat: 4,
-    half: "left",
-    parentId: "elapse",
-    description: "Hold the left half to fire a continuous beam.",
-    upgradeName: "Elapse+",
-    upgradeDescription: "Hold the left half to fire a slowing beam, release the right half to finish it off.",
-    upgradeHighlight: "slowing",
-  },
-  "elapse-right": {
-    id: "elapse-right",
-    name: "Elapse",
-    color: "#ed8ebc",
-    timing: "offbeat",
-    leadBeats: 0,
-    followBeats: 0.5,
-    damage: 9,
-    weakDamage: 3,
-    half: "right",
-    parentId: "elapse",
-    description: "Release the right half to finish the beam.",
-    upgradeName: "Elapse+",
-    upgradeDescription: "Hold the left half to fire a slowing beam, release the right half to finish it off.",
-    upgradeHighlight: "slowing",
+    pieces: {
+      left: {
+        id: "elapse-left",
+        leadBeats: 0.5,
+        followBeats: 0,
+        damagePerBeat: 4,
+        half: "left",
+        description: "Hold the left half to fire a continuous beam.",
+      },
+      right: {
+        id: "elapse-right",
+        leadBeats: 0,
+        followBeats: 0.5,
+        damage: 9,
+        weakDamage: 3,
+        half: "right",
+        description: "Release the right half to finish the beam.",
+      },
+    },
   },
 };
+
+function createBulletPieceDef(parent, piece) {
+  const { pieces, ...shared } = parent;
+  return {
+    ...shared,
+    ...piece,
+    parentId: parent.id,
+  };
+}
+
+export const BULLET_PIECE_DEFS = Object.fromEntries(
+  Object.values(BULLET_DEFS).flatMap((parent) =>
+    Object.values(parent.pieces ?? {}).map((piece) => [
+      piece.id,
+      createBulletPieceDef(parent, piece),
+    ]),
+  ),
+);
+
+const ELAPSE_PIECE_IDS = new Set(
+  Object.values(BULLET_DEFS.elapse.pieces).map((piece) => piece.id),
+);
 
 export const BULLET_POOL = [
   "stinger",
@@ -156,7 +167,11 @@ export const STARTING_TRACK = {
 };
 
 export function getBulletDef(id) {
-  return BULLET_DEFS[id];
+  return BULLET_DEFS[id] ?? BULLET_PIECE_DEFS[id];
+}
+
+export function getBulletPieces(id) {
+  return Object.values(BULLET_DEFS[id]?.pieces ?? {}).map((piece) => getBulletDef(piece.id));
 }
 
 export function getSlotName(slot) {
@@ -183,7 +198,7 @@ export function getSlotFollowBeats(slot) {
 }
 
 export function isElapseId(id) {
-  return id === "elapse-left" || id === "elapse-right";
+  return ELAPSE_PIECE_IDS.has(id);
 }
 
 export function isElapsePiece(piece) {
@@ -192,13 +207,5 @@ export function isElapsePiece(piece) {
 
 export function getElapseHalf(pieceOrId) {
   const id = typeof pieceOrId === "string" ? pieceOrId : pieceOrId?.id;
-  if (id === "elapse-left") {
-    return "left";
-  }
-
-  if (id === "elapse-right") {
-    return "right";
-  }
-
-  return null;
+  return getBulletDef(id)?.half ?? null;
 }
