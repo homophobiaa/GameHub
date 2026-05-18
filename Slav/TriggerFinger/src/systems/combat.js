@@ -2,21 +2,20 @@ import { getBulletDef } from "../defs/bullets.js";
 import {
   elapseSecondaryDamagePerBeat,
   elapseSecondarySlowMultiplier,
+  pairChipDamage,
   summarizeChipEffects,
 } from "./chipEffects.js";
 import { resolveBulletHandler } from "./bulletHandlers.js";
 import {
   addLaneProjectile,
   applyDamage,
-  applyDotDamage,
+  applyImpactEffectsToTarget,
   elapseBeamEnemies,
   findBarrierInterceptor,
   findElapseTarget,
   hitClosestInLaneDetailed,
-  hitHorizontalBand,
   knockEnemyBack,
   pushGuardEvent,
-  addHorizontalBar,
 } from "./combatPrimitives.js";
 import { toEnemyFrameIndex } from "./enemyFrameIndex.js";
 
@@ -55,23 +54,6 @@ export function resolveBulletShot({
   return events;
 }
 
-function applyImpactEffects({ impact, target, enemies, currentBeat, events }) {
-  (impact.effects ?? []).forEach((effect) => {
-    if (effect.kind === "dot") {
-      applyDotDamage(target, effect, currentBeat);
-      return;
-    }
-
-    if (effect.kind === "horizontalBand") {
-      hitHorizontalBand(enemies, impact.y, effect.radius, effect.amount, currentBeat, events);
-      addHorizontalBar(events, effect.color, impact.y, effect.radius);
-      return;
-    }
-
-    console.warn("Unhandled impact effect", effect);
-  });
-}
-
 export function resolvePiercingImpact({ impact, enemies, currentBeat }) {
   const enemyIndex = toEnemyFrameIndex(enemies);
   const target = enemyIndex.findById(impact.targetId);
@@ -93,7 +75,15 @@ export function resolvePiercingImpact({ impact, enemies, currentBeat }) {
     enemies: enemyIndex,
   });
   if (result.damaged) {
-    applyImpactEffects({ impact, target, enemies: enemyIndex, currentBeat, events });
+    applyImpactEffectsToTarget({
+      effects: impact.effects,
+      target,
+      enemies: enemyIndex,
+      lane: impact.lane ?? target.lane,
+      y: impact.y ?? target.y,
+      currentBeat,
+      events,
+    });
   }
   if (Number.isFinite(impact.knockback) && !result.passedThrough) {
     const knockbackTarget = impact.knockbackTargetId
@@ -102,6 +92,21 @@ export function resolvePiercingImpact({ impact, enemies, currentBeat }) {
     knockEnemyBack(knockbackTarget, impact.knockback);
   }
 
+  return events;
+}
+
+export function resolvePairChipShot({
+  lane,
+  enemies,
+  currentBeat,
+  damageMultiplier = 1,
+}) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  const def = getBulletDef("pair");
+  const events = [];
+  const amount = pairChipDamage(def.damage) * damageMultiplier;
+  const hit = hitClosestInLaneDetailed(enemyIndex, lane, amount, currentBeat, events);
+  addLaneProjectile(events, lane, def.color, true, hit.target?.y ?? 0.04, 5);
   return events;
 }
 

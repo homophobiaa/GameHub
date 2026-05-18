@@ -65,6 +65,17 @@ function addHorizontalBar({ event, effects }) {
   });
 }
 
+function addImpactRadius({ event, effects }) {
+  effects.push({
+    kind: "impactRadius",
+    lane: event.lane,
+    y: event.y,
+    color: event.color,
+    radius: event.radius,
+    ttl: HORIZONTAL_BAR_SECONDS,
+  });
+}
+
 function addPhaseBurst({ event, effects }) {
   effects.push({
     kind: "phaseBurst",
@@ -140,6 +151,7 @@ const COMBAT_EVENT_VIEW_HANDLERS = {
   projectile: addProjectile,
   piercingProjectile: addPiercingProjectile,
   horizontalBar: addHorizontalBar,
+  impactRadius: addImpactRadius,
   phase: addPhaseBurst,
   slash: addSlash,
   hit: addHitFloater,

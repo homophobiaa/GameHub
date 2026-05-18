@@ -540,7 +540,7 @@ export function planShellLine(enemies, lane, amount, knockback, currentBeat, opt
           y: secondaryTarget.y,
           secondary: true,
         });
-        impacts.push({
+        const secondaryImpact = {
           targetId: secondaryDamageTarget.id,
           guardedTargetId: secondaryInterceptor ? secondaryTarget.id : null,
           barrierId: secondaryInterceptor?.id ?? null,
@@ -556,7 +556,18 @@ export function planShellLine(enemies, lane, amount, knockback, currentBeat, opt
           secondary: true,
           guard: Boolean(secondaryInterceptor),
           countsForPierce: !secondaryResult.passedThrough,
+        };
+        const secondaryEffects = options.effectsForImpact?.({
+          hitIndex: impacts.filter((nextImpact) => !nextImpact.secondary).length + extraIndex,
+          target: secondaryTarget,
+          damageTarget: secondaryDamageTarget,
+          secondary: true,
+          amount: secondaryAmount,
         });
+        if (secondaryEffects?.length) {
+          secondaryImpact.effects = secondaryEffects;
+        }
+        impacts.push(secondaryImpact);
         if (secondaryResult.passedThrough) {
           extraIndex -= 1;
         }
@@ -577,6 +588,39 @@ export function hitHorizontalBand(enemies, centerY, radius, amount, currentBeat,
     .filter((enemy) => Math.abs(enemy.y - centerY) <= radius)
     .map((enemy) => {
       applyDamage(enemy, amount, currentBeat, events, { enemies: enemyIndex });
+      return enemy;
+    });
+}
+
+function impactDistance(enemy, lane, centerY) {
+  const laneDistance = Math.abs((enemy.lane ?? lane) - lane) / 3;
+  const yDistance = Math.abs(enemy.y - centerY);
+  return Math.hypot(laneDistance, yDistance);
+}
+
+export function hitImpactRadius(enemies, lane, centerY, radius, amount, currentBeat, events, options = {}) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  const excludeIds = new Set(options.excludeIds ?? []);
+  return enemyIndex
+    .targetableEnemies()
+    .filter((enemy) =>
+      !excludeIds.has(enemy.id) &&
+      impactDistance(enemy, lane, centerY) <= radius
+    )
+    .map((enemy) => {
+      const result = applyDamage(enemy, amount, currentBeat, events, { enemies: enemyIndex });
+      if (result.damaged && options.effects?.length) {
+        applyImpactEffectsToTarget({
+          effects: options.effects,
+          target: enemy,
+          enemies: enemyIndex,
+          lane: enemy.lane,
+          y: enemy.y,
+          currentBeat,
+          events,
+          excludeIds,
+        });
+      }
       return enemy;
     });
 }
@@ -612,6 +656,45 @@ export function applyDotDamage(enemy, { damage, durationSeconds, source }, curre
     source,
   });
   enemy.lastDamagedBeat = Math.floor(currentBeat);
+}
+
+export function applyImpactEffectsToTarget({
+  effects = [],
+  target,
+  enemies,
+  lane = target?.lane,
+  y = target?.y,
+  currentBeat,
+  events,
+  excludeIds = [],
+}) {
+  effects.forEach((effect) => {
+    if (effect.kind === "dot") {
+      applyDotDamage(target, effect, currentBeat);
+      return;
+    }
+
+    if (effect.kind === "horizontalBand") {
+      hitHorizontalBand(enemies, y, effect.radius, effect.amount, currentBeat, events);
+      addHorizontalBar(events, effect.color, y, effect.radius);
+      return;
+    }
+
+    if (effect.kind === "impactRadius") {
+      const excluded = new Set(excludeIds);
+      if (Number.isFinite(target?.id)) {
+        excluded.add(target.id);
+      }
+      hitImpactRadius(enemies, lane, y, effect.radius, effect.amount, currentBeat, events, {
+        excludeIds: excluded,
+        effects: effect.effects ?? [],
+      });
+      addImpactRadius(events, effect.color, lane, y, effect.radius);
+      return;
+    }
+
+    console.warn("Unhandled impact effect", effect);
+  });
 }
 
 export function addLaneProjectile(events, lane, color, secondary = false, endY = 0.04, width = null) {
@@ -659,6 +742,16 @@ export function addHorizontalBar(events, color, y, radius) {
   events.push({
     kind: "horizontalBar",
     color,
+    y,
+    radius,
+  });
+}
+
+export function addImpactRadius(events, color, lane, y, radius) {
+  events.push({
+    kind: "impactRadius",
+    color,
+    lane,
     y,
     radius,
   });

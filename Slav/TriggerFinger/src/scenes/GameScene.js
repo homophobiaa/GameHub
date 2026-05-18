@@ -22,13 +22,14 @@ import {
   resolveBulletShot,
   resolveElapseFinish,
   resolveElapseStart,
+  resolvePairChipShot,
   resolvePiercingImpact,
   updateDamageOverTime,
   updateElapseBeamDamage,
 } from "../systems/combat.js";
 import { WaveRunner } from "../systems/waveRunner.js";
 import { applyUpgradeChoice, createStoreOffer } from "../systems/upgrades.js";
-import { createEnemyDraftChoices, shouldDraftEnemy } from "../systems/enemyDraft.js";
+import { createWoeChoices, shouldOfferWoe } from "../systems/woeDraft.js";
 import { getDamageMultiplier, rateTiming } from "../systems/timing.js";
 import { createEnemyFrameIndex } from "../systems/enemyFrameIndex.js";
 import {
@@ -77,6 +78,7 @@ export class GameScene {
     this.effects = [];
     this.floaters = [];
     this.echoes = [];
+    this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
     this.activeElapse = null;
@@ -108,8 +110,8 @@ export class GameScene {
     this.shopCycleIndex = 0;
     this.enemyPool = ["basic"];
     this.aspectGrantors = [];
-    this.pendingEnemyDraft = false;
-    this.enemyDraftChoices = [];
+    this.pendingWoe = false;
+    this.woeChoices = [];
     this.editorMessage = "";
     this.beatFlashKind = "";
     this.beatFlashTtl = 0;
@@ -118,8 +120,8 @@ export class GameScene {
     this.dragProxy = null;
     this.dragSource = null;
     this.dragPayload = null;
-    this.forgeryAnimating = false;
-    this.forgeCandidateUid = null;
+    this.storeSlotAnimating = false;
+    this.whetstoneCandidateUid = null;
     this.wreckerCandidateUid = null;
     this.scrapChips = [];
     this.scrapChipSerial = 0;
@@ -205,7 +207,7 @@ export class GameScene {
       return;
     }
 
-    if (this.forgeryAnimating) {
+    if (this.storeSlotAnimating) {
       return;
     }
 
@@ -226,8 +228,8 @@ export class GameScene {
       this.skipStore();
     }
 
-    if (action === "forge-candidate") {
-      this.forgeCandidate();
+    if (action === "hone-candidate") {
+      this.honeCandidate();
       return;
     }
 
@@ -236,9 +238,9 @@ export class GameScene {
       return;
     }
 
-    if (action.startsWith("enemy-choice:")) {
+    if (action.startsWith("woe-choice:")) {
       const [, kind, type] = action.split(":");
-      this.chooseEnemyType(type ?? kind, type ? kind : null);
+      this.chooseWoeChoice(type ?? kind, type ? kind : null);
     }
 
     if (action.startsWith("select-piece:")) {
@@ -291,7 +293,7 @@ export class GameScene {
   };
 
   onDragStart = (event) => {
-    if (this.forgeryAnimating) {
+    if (this.storeSlotAnimating) {
       event.preventDefault();
       return;
     }
@@ -335,7 +337,7 @@ export class GameScene {
     this.moveDragProxy(event);
     const dropBeat = event.target.closest("[data-drop-beat]");
     const chipDrop = event.target.closest("[data-chip-drop-beat]");
-    const forgeryDrop = event.target.closest("[data-forgery-drop]");
+    const whetstoneDrop = event.target.closest("[data-whetstone-drop]");
     const wreckerDrop = event.target.closest("[data-wrecker-drop]");
     const inventoryDrop = event.target.closest("[data-inventory-drop]");
     const isChipDrag = this.dragPayload?.kind === "chip";
@@ -343,9 +345,9 @@ export class GameScene {
     this.updateChipDropHover(isChipDrag ? chipDrop : null);
 
     if (
-      (isChipDrag && (chipDrop || inventoryDrop || forgeryDrop || wreckerDrop)) ||
+      (isChipDrag && (chipDrop || inventoryDrop || whetstoneDrop || wreckerDrop)) ||
       (dropBeat && !isChipDrag) ||
-      (forgeryDrop && this.canForgePiece(this.dragPayload?.uid)) ||
+      (whetstoneDrop && this.canHonePiece(this.dragPayload?.uid)) ||
       (wreckerDrop && this.canWreckPiece(this.dragPayload?.uid)) ||
       (inventoryDrop && !isChipDrag)
     ) {
@@ -364,7 +366,7 @@ export class GameScene {
     const payload = JSON.parse(data);
     const dropBeat = event.target.closest("[data-drop-beat]");
     const chipDrop = event.target.closest("[data-chip-drop-beat]");
-    const forgeryDrop = event.target.closest("[data-forgery-drop]");
+    const whetstoneDrop = event.target.closest("[data-whetstone-drop]");
     const wreckerDrop = event.target.closest("[data-wrecker-drop]");
     const chipTrayDrop = event.target.closest("[data-chip-tray-drop]");
 
@@ -393,11 +395,11 @@ export class GameScene {
       return;
     }
 
-    if (forgeryDrop) {
-      this.forgeCandidateUid = this.canForgePiece(payload.uid) ? payload.uid : null;
+    if (whetstoneDrop) {
+      this.whetstoneCandidateUid = this.canHonePiece(payload.uid) ? payload.uid : null;
       this.wreckerCandidateUid = null;
       this.track.setSelected(payload.uid);
-      this.editorMessage = this.forgeCandidateUid
+      this.editorMessage = this.whetstoneCandidateUid
         ? "Click the Whetstone panel to hone."
         : "That bullet cannot be upgraded.";
       this.endDragProxy();
@@ -407,7 +409,7 @@ export class GameScene {
 
     if (wreckerDrop) {
       this.wreckerCandidateUid = this.canWreckPiece(payload.uid) ? payload.uid : null;
-      this.forgeCandidateUid = null;
+      this.whetstoneCandidateUid = null;
       this.track.setSelected(payload.uid);
       this.editorMessage = this.wreckerCandidateUid
         ? "Click the Wrecker panel to scrap."
@@ -644,14 +646,14 @@ export class GameScene {
     animation.addEventListener("cancel", cleanup, { once: true });
   }
 
-  getForgeryUpgradeSnapshot(forgeryDrop, source = this.dragSource) {
+  getSlotStoreSnapshot(slotDrop, source = this.dragSource) {
     if (!source) {
       return null;
     }
 
     const visual = this.dragProxy?.querySelector(".bullet-glyph") ?? source;
     const visualRect = visual.getBoundingClientRect();
-    const socketRect = (forgeryDrop.querySelector(".forgery-socket") ?? forgeryDrop)
+    const socketRect = (slotDrop.querySelector(".slot-store-socket") ?? slotDrop)
       .getBoundingClientRect();
     const styles = getComputedStyle(source);
     return {
@@ -674,17 +676,17 @@ export class GameScene {
     };
   }
 
-  async animateForgeryUpgrade(uid, snapshot) {
-    if (!snapshot || !this.canForgePiece(uid)) {
-      this.forgePiece(uid);
+  async animateWhetstoneHone(uid, snapshot) {
+    if (!snapshot || !this.canHonePiece(uid)) {
+      this.honePiece(uid);
       return;
     }
 
-    this.forgeryAnimating = true;
-    this.forgeCandidateUid = uid;
-    snapshot.source?.classList.add("is-forging-source");
+    this.storeSlotAnimating = true;
+    this.whetstoneCandidateUid = uid;
+    snapshot.source?.classList.add("is-store-action-source");
     const ghost = document.createElement("div");
-    ghost.className = ["forgery-upgrade-ghost", "drag-proxy", snapshot.timingClass, snapshot.extraClasses]
+    ghost.className = ["whetstone-upgrade-ghost", "drag-proxy", snapshot.timingClass, snapshot.extraClasses]
       .filter(Boolean)
       .join(" ");
     ghost.style.setProperty("--piece-color", snapshot.color);
@@ -719,14 +721,14 @@ export class GameScene {
     ghost.style.left = `${snapshot.socketCenter.x}px`;
     ghost.style.top = `${snapshot.socketCenter.y}px`;
     ghost.style.transform = "translate(-50%, -50%)";
-    ghost.classList.add("is-upgraded", "is-forging");
-    this.createForgerySparks(snapshot.socketCenter, snapshot.color);
+    ghost.classList.add("is-upgraded", "is-honing");
+    this.createStoreSparks(snapshot.socketCenter, snapshot.color);
 
-    const didForge = this.applyForgePiece(uid);
-    if (!didForge) {
+    const didHone = this.applyHonePiece(uid);
+    if (!didHone) {
       ghost.remove();
-      snapshot.source?.classList.remove("is-forging-source");
-      this.forgeryAnimating = false;
+      snapshot.source?.classList.remove("is-store-action-source");
+      this.storeSlotAnimating = false;
       this.showIntermission();
       return;
     }
@@ -751,20 +753,20 @@ export class GameScene {
       upgradedClass: "is-upgraded",
     };
     ghost.remove();
-    snapshot.source?.classList.remove("is-forging-source");
-    this.forgeryAnimating = false;
-    this.forgeCandidateUid = null;
+    snapshot.source?.classList.remove("is-store-action-source");
+    this.storeSlotAnimating = false;
+    this.whetstoneCandidateUid = null;
     this.showIntermission();
     this.animateInventoryReturn(uid, returnSnapshot);
   }
 
-  createForgerySparks(center, color) {
+  createStoreSparks(center, color) {
     const sparks = 18;
     for (let i = 0; i < sparks; i += 1) {
       const spark = document.createElement("span");
       const angle = -Math.PI * 0.92 + (Math.PI * 1.84 * i) / Math.max(1, sparks - 1);
       const distance = 28 + (i % 5) * 8;
-      spark.className = "forgery-spark";
+      spark.className = "store-spark";
       spark.style.left = `${center.x}px`;
       spark.style.top = `${center.y}px`;
       spark.style.setProperty("--spark-color", color);
@@ -881,9 +883,9 @@ export class GameScene {
       return;
     }
 
-    this.forgeryAnimating = true;
+    this.storeSlotAnimating = true;
     this.wreckerCandidateUid = uid;
-    snapshot.source?.classList.add("is-forging-source");
+    snapshot.source?.classList.add("is-store-action-source");
 
     const center = {
       x: snapshot.rect.left + snapshot.rect.width / 2,
@@ -918,7 +920,7 @@ export class GameScene {
 
     await crush.finished.catch(() => {});
     this.createWreckerFlash(center, snapshot.color);
-    this.createForgerySparks(center, snapshot.color);
+    this.createStoreSparks(center, snapshot.color);
     bulletGhost.remove();
 
     const chipRect = {
@@ -938,20 +940,20 @@ export class GameScene {
     const didWreck = this.applyWreckPiece(uid);
     if (!didWreck) {
       chipGhosts.forEach((ghost) => ghost.remove());
-      snapshot.source?.classList.remove("is-forging-source");
-      this.forgeryAnimating = false;
+      snapshot.source?.classList.remove("is-store-action-source");
+      this.storeSlotAnimating = false;
       this.showIntermission();
       return;
     }
 
     const chipUids = [...this.lastScrappedChipUids];
-    snapshot.source?.classList.remove("is-forging-source");
+    snapshot.source?.classList.remove("is-store-action-source");
     this.showIntermission();
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await Promise.all(chipGhosts.map((ghost, index) =>
       this.animateChipGhostToTarget(chipUids[index], ghost)
     ));
-    this.forgeryAnimating = false;
+    this.storeSlotAnimating = false;
     this.wreckerCandidateUid = null;
   }
 
@@ -1144,10 +1146,11 @@ export class GameScene {
         uid: chip.uid,
         sourceId: chip.sourceId,
         sourceUpgraded: Boolean(chip.sourceUpgraded),
+        beat: chip.beat,
       }));
   }
 
-  canForgePiece(uid) {
+  canHonePiece(uid) {
     const piece = uid ? this.track.findPiece(uid) : null;
     return Boolean(
       this.storeOffer?.store.id === "whetstone" &&
@@ -1157,7 +1160,7 @@ export class GameScene {
     );
   }
 
-  applyForgePiece(uid) {
+  applyHonePiece(uid) {
     const piece = this.track.findPiece(uid);
     if (this.storeOffer?.store.id !== "whetstone") {
       return false;
@@ -1181,7 +1184,7 @@ export class GameScene {
     this.track.upgradePiece(uid);
     this.returnInvalidChipPlacements();
     this.track.setSelected(uid);
-    this.forgeCandidateUid = null;
+    this.whetstoneCandidateUid = null;
     this.wreckerCandidateUid = null;
     this.storePicks = Math.max(0, this.storePicks - 1);
     const remainingUpgradeable = this.track.allPieces.filter((nextPiece) => !nextPiece.upgraded).length;
@@ -1205,28 +1208,28 @@ export class GameScene {
     return true;
   }
 
-  forgePiece(uid) {
-    this.applyForgePiece(uid);
+  honePiece(uid) {
+    this.applyHonePiece(uid);
     this.showIntermission();
   }
 
-  forgeCandidate() {
-    const uid = this.forgeCandidateUid;
+  honeCandidate() {
+    const uid = this.whetstoneCandidateUid;
     if (!uid) {
       this.editorMessage = "Drop a bullet into the Whetstone slot first.";
       this.showIntermission();
       return;
     }
 
-    const forgeryDrop = this.overlay.querySelector("[data-forgery-drop]");
-    const source = this.overlay.querySelector("[data-forge-candidate-token]");
-    if (!forgeryDrop || !source) {
-      this.forgePiece(uid);
+    const whetstoneDrop = this.overlay.querySelector("[data-whetstone-drop]");
+    const source = this.overlay.querySelector(`[data-whetstone-candidate-token][data-piece-uid="${uid}"]`);
+    if (!whetstoneDrop || !source) {
+      this.honePiece(uid);
       return;
     }
 
-    const snapshot = this.getForgeryUpgradeSnapshot(forgeryDrop, source);
-    this.animateForgeryUpgrade(uid, snapshot);
+    const snapshot = this.getSlotStoreSnapshot(whetstoneDrop, source);
+    this.animateWhetstoneHone(uid, snapshot);
   }
 
   getPieceRemovalUids(piece) {
@@ -1307,7 +1310,7 @@ export class GameScene {
     this.returnChipsForHosts(removedHostUids);
     this.track.removePiece(uid);
     this.scrapChips.push(...chips);
-    this.forgeCandidateUid = null;
+    this.whetstoneCandidateUid = null;
     this.wreckerCandidateUid = null;
     this.storePicks = Math.max(0, this.storePicks - 1);
 
@@ -1346,13 +1349,13 @@ export class GameScene {
     }
 
     const wreckerDrop = this.overlay.querySelector("[data-wrecker-drop]");
-    const source = this.overlay.querySelector("[data-wrecker-candidate-token]");
+    const source = this.overlay.querySelector(`[data-wrecker-candidate-token][data-piece-uid="${uid}"]`);
     if (!wreckerDrop || !source) {
       this.wreckPiece(uid);
       return;
     }
 
-    const snapshot = this.getForgeryUpgradeSnapshot(wreckerDrop, source);
+    const snapshot = this.getSlotStoreSnapshot(wreckerDrop, source);
     this.animateWreckerScrap(uid, snapshot);
   }
 
@@ -1418,8 +1421,8 @@ export class GameScene {
   }
 
   startWave() {
-    if (this.pendingEnemyDraft) {
-      this.editorMessage = "Pick an enemy type first.";
+    if (this.pendingWoe) {
+      this.editorMessage = "Choose a Woe first.";
       this.showIntermission();
       return;
     }
@@ -1430,7 +1433,7 @@ export class GameScene {
       return;
     }
 
-    if (this.forgeryAnimating) {
+    if (this.storeSlotAnimating) {
       this.editorMessage = "Store animation in progress.";
       this.showIntermission();
       return;
@@ -1449,12 +1452,13 @@ export class GameScene {
     this.choices = [];
     this.storeOffer = null;
     this.storePicks = 0;
-    this.forgeCandidateUid = null;
+    this.whetstoneCandidateUid = null;
     this.wreckerCandidateUid = null;
     this.enemies = [];
     this.effects = [];
     this.floaters = [];
     this.echoes = [];
+    this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
     this.waveKills = 0;
@@ -1496,15 +1500,15 @@ export class GameScene {
       storeOffer: this.storeOffer,
       storePicks: this.storePicks,
       bankedStorePicks: this.bankedStorePicks,
-      forgeCandidateUid: this.forgeCandidateUid,
+      whetstoneCandidateUid: this.whetstoneCandidateUid,
       wreckerCandidateUid: this.wreckerCandidateUid,
       scrapChips: this.scrapChips,
-      enemyDraft: this.pendingEnemyDraft
+      woeDraft: this.pendingWoe
         ? {
-            choices: this.enemyDraftChoices,
+            choices: this.woeChoices,
             unlocked: this.enemyPool,
             aspectGrantors: this.aspectGrantors,
-            kind: this.enemyDraftChoices[0]?.kind ?? "enemy",
+            kind: this.woeChoices[0]?.kind ?? "enemy",
           }
         : null,
       message: this.editorMessage,
@@ -1548,6 +1552,7 @@ export class GameScene {
       });
     }
     this.updateEchoes(createEnemyFrameIndex(this.enemies));
+    this.updateChipShots(createEnemyFrameIndex(this.enemies));
     this.updateEnemies(dt, createEnemyFrameIndex(this.enemies));
     this.updateElapse(dt, createEnemyFrameIndex(this.enemies));
     this.updateEffects(dt);
@@ -1631,6 +1636,7 @@ export class GameScene {
     this.active = false;
     this.activeElapse = null;
     this.combo = 0;
+    this.pendingChipShots = [];
     this.waveClearOutro = true;
     this.waveClearOutroTimer = WAVE_CLEAR_OUTRO_SECONDS;
     this.waveProgressFlashTtl = WAVE_PROGRESS_FLASH_SECONDS;
@@ -1671,6 +1677,39 @@ export class GameScene {
         scheduleEcho: () => {},
       });
       this.consumeCombatEvents(events, "echo");
+    });
+  }
+
+  schedulePairChipShots({ hostUid, lane, hostBeat, targetBeat, damageMultiplier }) {
+    this.scrapChips
+      .filter((chip) =>
+        chip.hostUid === hostUid &&
+        chip.sourceId === "pair" &&
+        Number.isFinite(chip.beat)
+      )
+      .forEach((chip) => {
+        const chipOffset = chip.beat - hostBeat;
+        this.pendingChipShots.push({
+          chipUid: chip.uid,
+          lane,
+          fireBeat: Math.max(this.beat, targetBeat + chipOffset),
+          damageMultiplier,
+        });
+      });
+  }
+
+  updateChipShots(enemyIndex = createEnemyFrameIndex(this.enemies)) {
+    const ready = this.pendingChipShots.filter((shot) => shot.fireBeat <= this.beat);
+    this.pendingChipShots = this.pendingChipShots.filter((shot) => shot.fireBeat > this.beat);
+
+    ready.forEach((shot) => {
+      const events = resolvePairChipShot({
+        lane: shot.lane,
+        enemies: enemyIndex,
+        currentBeat: this.beat,
+        damageMultiplier: shot.damageMultiplier,
+      });
+      this.consumeCombatEvents(events, "chip");
     });
   }
 
@@ -2092,6 +2131,13 @@ export class GameScene {
     const timing = rateTiming(shot.delta);
     const multiplier = this.damageMultiplier() * timing.damageFactor;
     const enemyIndex = createEnemyFrameIndex(this.enemies);
+    this.schedulePairChipShots({
+      hostUid: shot.entry.uid,
+      lane,
+      hostBeat: shot.entry.beat,
+      targetBeat: shot.targetBeat,
+      damageMultiplier: multiplier,
+    });
     if (isElapsePiece(shot.entry)) {
       if (getElapseHalf(shot.entry) === "left") {
         this.startElapseBeam(lane, shot, timing, multiplier, enemyIndex);
@@ -2181,7 +2227,7 @@ export class GameScene {
       return;
     }
 
-    this.forgeCandidateUid = null;
+    this.whetstoneCandidateUid = null;
     this.wreckerCandidateUid = null;
     this.bankedStorePicks += Math.max(1, this.storePicks);
     this.storePicks = 0;
@@ -2190,12 +2236,12 @@ export class GameScene {
     this.showIntermission();
   }
 
-  chooseEnemyType(type, kind = null) {
-    const choice = this.enemyDraftChoices.find((draftChoice) =>
-      draftChoice.type === type &&
-      (!kind || draftChoice.kind === kind)
+  chooseWoeChoice(type, kind = null) {
+    const choice = this.woeChoices.find((woeChoice) =>
+      woeChoice.type === type &&
+      (!kind || woeChoice.kind === kind)
     );
-    if (!this.pendingEnemyDraft || !choice) {
+    if (!this.pendingWoe || !choice) {
       return;
     }
 
@@ -2209,13 +2255,13 @@ export class GameScene {
     }
 
     const def = getEnemyDef(type);
-    this.pendingEnemyDraft = false;
-    this.enemyDraftChoices = [];
+    this.pendingWoe = false;
+    this.woeChoices = [];
     this.storeOffer = null;
     this.choices = [];
     this.storePicks = 0;
     this.pendingUpgrade = false;
-    this.forgeCandidateUid = null;
+    this.whetstoneCandidateUid = null;
     this.wreckerCandidateUid = null;
     this.editorMessage = `${def.name} added to the spawn pool.`;
     this.showIntermission();
@@ -2234,13 +2280,13 @@ export class GameScene {
     }
 
     const def = getEnemyDef(type);
-    this.pendingEnemyDraft = false;
-    this.enemyDraftChoices = [];
+    this.pendingWoe = false;
+    this.woeChoices = [];
     this.storeOffer = null;
     this.choices = [];
     this.storePicks = 0;
     this.pendingUpgrade = false;
-    this.forgeCandidateUid = null;
+    this.whetstoneCandidateUid = null;
     this.wreckerCandidateUid = null;
     this.editorMessage = `All ${def.name}s now spread ${aspect.name} to nearby basics when killed.`;
     this.showIntermission();
@@ -2249,7 +2295,7 @@ export class GameScene {
   openStoreAfterWave(show = false) {
     this.storePicks = this.bankedStorePicks + 1;
     this.bankedStorePicks = 0;
-    this.forgeCandidateUid = null;
+    this.whetstoneCandidateUid = null;
     this.wreckerCandidateUid = null;
     this.storeOffer = createStoreOffer(this.track, {
       ...this.getRunState(),
@@ -2344,6 +2390,7 @@ export class GameScene {
   clearWave() {
     this.waveRunner.finish();
     this.activeElapse = null;
+    this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
     this.score += 260 + this.waveIndex * 40;
@@ -2357,9 +2404,9 @@ export class GameScene {
     if (this.waveIndex >= 3) {
       this.beatSeconds = Math.max(0.82, 1 - (this.waveIndex - 2) * 0.025);
     }
-    if (shouldDraftEnemy(this.waveIndex, this.enemyPool, this.aspectGrantors)) {
-      this.pendingEnemyDraft = true;
-      this.enemyDraftChoices = createEnemyDraftChoices(this.enemyPool, this.aspectGrantors);
+    if (shouldOfferWoe(this.waveIndex, this.enemyPool, this.aspectGrantors)) {
+      this.pendingWoe = true;
+      this.woeChoices = createWoeChoices(this.enemyPool, this.aspectGrantors);
       this.storeOffer = null;
       this.choices = [];
       this.storePicks = 0;
@@ -2372,6 +2419,7 @@ export class GameScene {
 
   endRun() {
     this.active = false;
+    this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
     this.intermissionView.renderGameOver(this.score, this.waveIndex);

@@ -17,7 +17,7 @@ const STORE_DEFS = {
   wrecker: {
     id: "wrecker",
     name: "Wrecker",
-    copy: `Scrap one bullet into ${CHIP_TUNING.chipsPerScrap} inert chip${CHIP_TUNING.chipsPerScrap === 1 ? "" : "s"}.`,
+    copy: `scraps into ${CHIP_TUNING.chipsPerScrap} chips that can give its effect to another bullet.`,
   },
   workshop: {
     id: "workshop",

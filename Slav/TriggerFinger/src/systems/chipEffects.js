@@ -9,6 +9,7 @@ function getSecondaryEffectScale(def) {
 
 export function summarizeChipEffects(chipEffects = []) {
   const shell = getBulletDef("shell");
+  const toxic = getBulletDef("toxic");
   return chipEffects.reduce((summary, chip) => {
     const def = getChipDef(chip.sourceId);
     if (!def) {
@@ -33,16 +34,76 @@ export function summarizeChipEffects(chipEffects = []) {
         getSecondaryEffectScale(def);
     }
 
+    if (def.timedShotDamageScale) {
+      summary.pairShotCount += 1;
+      summary.pairShotDamageScale = Math.max(summary.pairShotDamageScale, def.timedShotDamageScale);
+    }
+
+    if (Number.isFinite(def.radius)) {
+      summary.brittleRadiusStacks += 1;
+      summary.brittleRadius = def.radius +
+        Math.max(0, summary.brittleRadiusStacks - 1) * (def.radiusPerStack ?? 0);
+      summary.brittleDamageScale = getSecondaryEffectScale(def);
+    }
+
+    if (Number.isFinite(def.dotDamageScale)) {
+      summary.toxicDotDamage += toxic.dotDamage * def.dotDamageScale;
+      summary.toxicDotDurationBeats = def.dotDurationBeats ?? CHIP_TUNING.toxicDotDurationBeats;
+    }
+
     return summary;
   }, {
     stingerPierce: 0,
     shellKnockback: 0,
     secondaryEffectScales: [],
+    pairShotCount: 0,
+    pairShotDamageScale: CHIP_TUNING.pairShotDamageScale,
+    brittleRadiusStacks: 0,
+    brittleRadius: 0,
+    brittleDamageScale: CHIP_TUNING.secondaryEffectScale,
+    toxicDotDamage: 0,
+    toxicDotDurationBeats: CHIP_TUNING.toxicDotDurationBeats,
   });
 }
 
 export function hasLineChipModifiers(chipSummary) {
   return chipSummary.stingerPierce > 0 || chipSummary.shellKnockback > 0;
+}
+
+export function hasImpactChipEffects(chipSummary) {
+  return chipSummary.brittleRadius > 0 || chipSummary.toxicDotDamage > 0;
+}
+
+export function createToxicChipImpactEffects(chipSummary, beatSeconds = 1) {
+  if (chipSummary.toxicDotDamage <= 0) {
+    return [];
+  }
+
+  return [{
+    kind: "dot",
+    damage: chipSummary.toxicDotDamage,
+    durationSeconds: chipSummary.toxicDotDurationBeats * beatSeconds,
+    source: "toxic-chip",
+  }];
+}
+
+export function createChipImpactEffects(chipSummary, { amount = 0, beatSeconds = 1 } = {}) {
+  const effects = createToxicChipImpactEffects(chipSummary, beatSeconds);
+  if (chipSummary.brittleRadius > 0 && amount > 0) {
+    effects.push({
+      kind: "impactRadius",
+      color: getBulletDef("brittle").color,
+      radius: chipSummary.brittleRadius,
+      amount: amount * chipSummary.brittleDamageScale,
+      effects: createToxicChipImpactEffects(chipSummary, beatSeconds),
+    });
+  }
+
+  return effects;
+}
+
+export function pairChipDamage(amount) {
+  return amount * CHIP_TUNING.pairShotDamageScale;
 }
 
 export function secondaryChipScale(chipSummary = null, secondaryIndex = 0) {

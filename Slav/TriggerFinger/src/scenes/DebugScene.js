@@ -4,6 +4,7 @@ import { LANES } from "../config/gameplay.js";
 import { getComboCap } from "../systems/timing.js";
 import { createEnemy, WaveRunner } from "../systems/waveRunner.js";
 import { createStoreOffer } from "../systems/upgrades.js";
+import { createDebugWoeChoices } from "../systems/woeDraft.js";
 import { renderWhetstoneSlot, renderWreckerSlot } from "../ui/intermissionPanel.js";
 import { GameScene } from "./GameScene.js";
 
@@ -25,8 +26,8 @@ export class DebugScene extends GameScene {
     this.debugWaveNumber = 1;
     this.debugEnemyType = "basic";
     this.debugLane = 1;
-    this.enemyPool = ["basic", ...SPECIAL_ENEMY_POOL];
-    this.aspectGrantors = [...SPECIAL_ENEMY_POOL];
+    this.enemyPool = ["basic"];
+    this.aspectGrantors = [];
   }
 
   mount(root) {
@@ -130,6 +131,12 @@ export class DebugScene extends GameScene {
       return true;
     }
 
+    if (action === "open-woe") {
+      this.openDebugWoe();
+      this.showDebugPanel();
+      return true;
+    }
+
     if (action === "play-wave") {
       this.readDebugControls();
       this.playDebugWave();
@@ -169,7 +176,7 @@ export class DebugScene extends GameScene {
       storeOffer: this.storeOffer,
       storePicks: this.storePicks,
       bankedStorePicks: this.bankedStorePicks,
-      forgeCandidateUid: this.forgeCandidateUid,
+      whetstoneCandidateUid: this.whetstoneCandidateUid,
       wreckerCandidateUid: this.wreckerCandidateUid,
       scrapChips: this.scrapChips,
       debugTools: this.renderDebugTools(),
@@ -212,6 +219,8 @@ export class DebugScene extends GameScene {
   }
 
   openDebugStore() {
+    this.pendingWoe = false;
+    this.woeChoices = [];
     this.storeOffer = createStoreOffer(this.track, {
       ...this.getRunState(),
       forceStoreId: this.debugStoreId,
@@ -220,6 +229,18 @@ export class DebugScene extends GameScene {
     this.storePicks = 99;
     this.pendingUpgrade = true;
     this.editorMessage = `${this.storeOffer.store.name} opened with free picks.`;
+  }
+
+  openDebugWoe() {
+    this.storeOffer = null;
+    this.choices = [];
+    this.storePicks = 0;
+    this.pendingUpgrade = false;
+    this.whetstoneCandidateUid = null;
+    this.wreckerCandidateUid = null;
+    this.pendingWoe = true;
+    this.woeChoices = createDebugWoeChoices(this.enemyPool, this.aspectGrantors);
+    this.editorMessage = "Woe opened with every special option.";
   }
 
   playDebugWave() {
@@ -272,12 +293,31 @@ export class DebugScene extends GameScene {
   }
 
   renderDebugChoiceList() {
+    if (this.pendingWoe) {
+      return `
+        <div class="debug-shop-list">
+          <span class="debug-section-title">Woe | free</span>
+          ${this.woeChoices.map((choice) => {
+            const isAlreadyActive = choice.kind === "aspect"
+              ? this.aspectGrantors.includes(choice.type)
+              : this.enemyPool.includes(choice.type);
+            return `
+              <button class="debug-tool-button ${isAlreadyActive ? "is-active" : ""}" data-action="woe-choice:${choice.kind}:${choice.type}">
+                <span>${choice.title}</span>
+                <small>${choice.copy}</small>
+              </button>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+
     if (this.storeOffer?.store.id === "whetstone") {
       const upgradeableCount = this.track.allPieces.filter((piece) => !piece.upgraded).length;
       return `
         <div class="debug-shop-list">
           <span class="debug-section-title">${this.storeOffer.store.name} | free</span>
-          ${renderWhetstoneSlot(this.track, upgradeableCount === 0, this.forgeCandidateUid)}
+          ${renderWhetstoneSlot(this.track, upgradeableCount === 0, this.whetstoneCandidateUid)}
         </div>
       `;
     }
@@ -358,6 +398,7 @@ export class DebugScene extends GameScene {
           <select data-debug-store>${storeOptions}</select>
         </label>
         <button class="debug-tool-button" data-debug-action="open-shop">Open Free Shop</button>
+        <button class="debug-tool-button" data-debug-action="open-woe">Open Free Woe</button>
         ${this.renderDebugChoiceList()}
 
         <label class="debug-field">
@@ -371,7 +412,11 @@ export class DebugScene extends GameScene {
 
         <div class="debug-pool">
           <span class="debug-section-title">Woe Pool</span>
-          <small>${this.enemyPool.map((type) => getEnemyDef(type).name).join(", ")}</small>
+          <small>${this.enemyPool
+            .filter((type) => type !== "basic")
+            .map((type) => getEnemyDef(type).name)
+            .join(", ") || "No specials"}</small>
+          <small>Spreading: ${this.aspectGrantors.map((type) => getEnemyDef(type).name).join(", ") || "None"}</small>
         </div>
         <div class="debug-pool">
           <span class="debug-section-title">Bullets</span>

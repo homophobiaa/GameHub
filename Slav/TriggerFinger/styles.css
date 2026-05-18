@@ -956,8 +956,8 @@ input {
   opacity: 0.38;
 }
 
-.timeline-piece.is-forging-source,
-.inventory-token.is-forging-source {
+.timeline-piece.is-store-action-source,
+.inventory-token.is-store-action-source {
   opacity: 0;
 }
 
@@ -1027,7 +1027,7 @@ input {
   height: 42px;
 }
 
-.forgery-upgrade-ghost {
+.whetstone-upgrade-ghost {
   width: 42px;
   height: 42px;
   z-index: 10020;
@@ -1043,17 +1043,17 @@ input {
   pointer-events: none;
 }
 
-.forgery-upgrade-ghost > .bullet-glyph {
+.whetstone-upgrade-ghost > .bullet-glyph {
   width: 42px;
   height: 42px;
   transform-origin: center;
 }
 
-.forgery-upgrade-ghost.is-forging > .bullet-glyph {
-  animation: forgePulse 850ms ease both;
+.whetstone-upgrade-ghost.is-honing > .bullet-glyph {
+  animation: whetstonePulse 850ms ease both;
 }
 
-.forgery-spark {
+.store-spark {
   position: fixed;
   width: 5px;
   height: 5px;
@@ -1079,7 +1079,7 @@ input {
   z-index: 10024;
 }
 
-@keyframes forgePulse {
+@keyframes whetstonePulse {
   0% {
     filter: brightness(1);
     transform: scale(1);
@@ -1398,7 +1398,7 @@ input {
   width: 100%;
 }
 
-.enemy-draft-choice {
+.woe-choice {
   border-color: color-mix(in srgb, var(--enemy-color), #111 35%);
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--enemy-color), transparent 84%), transparent 66%),
@@ -1409,21 +1409,26 @@ input {
   border-radius: 8px;
 }
 
-.forgery-slot {
+.slot-store {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 78px;
   gap: 10px;
   align-items: center;
   min-height: 112px;
   padding: 12px;
-  border: 1px dashed color-mix(in srgb, var(--accent), #fff 15%);
+  border: 1px dashed #465061;
   border-radius: 8px;
+  background: #202631;
+}
+
+.whetstone-slot {
+  border-color: color-mix(in srgb, var(--accent), #fff 15%);
   background:
     linear-gradient(90deg, rgba(243, 191, 77, 0.12), transparent 64%),
     #202631;
 }
 
-.forgery-slot.has-candidate {
+.slot-store.has-candidate {
   cursor: pointer;
   border-style: solid;
   box-shadow: inset 0 0 0 1px rgba(255, 242, 190, 0.18);
@@ -1440,38 +1445,38 @@ input {
   box-shadow: inset 0 0 0 1px rgba(184, 193, 207, 0.2);
 }
 
-.wrecker-slot .forgery-socket {
+.wrecker-slot .slot-store-socket {
   border-color: rgba(184, 193, 207, 0.55);
   box-shadow: inset 0 0 18px rgba(143, 153, 168, 0.14);
 }
 
-.wrecker-slot .forgery-socket > span:not(.inventory-token-slot) {
+.wrecker-slot .slot-store-placeholder {
   border-color: rgba(184, 193, 207, 0.72);
   box-shadow: 0 0 14px rgba(184, 193, 207, 0.22);
 }
 
-.forgery-slot.is-disabled {
+.slot-store.is-disabled {
   cursor: default;
   filter: grayscale(0.35);
   opacity: 0.42;
 }
 
-.forgery-slot-copy {
+.slot-store-copy {
   min-width: 0;
 }
 
-.forgery-slot-copy strong,
-.forgery-slot-copy small {
+.slot-store-copy strong,
+.slot-store-copy small {
   display: block;
 }
 
-.forgery-slot-copy small {
+.slot-store-copy small {
   margin-top: 4px;
   color: var(--muted);
   font-size: 0.78rem;
 }
 
-.forgery-socket {
+.slot-store-socket {
   display: grid;
   width: 58px;
   height: 58px;
@@ -1483,7 +1488,18 @@ input {
   box-shadow: inset 0 0 18px rgba(243, 191, 77, 0.12);
 }
 
-.forgery-socket > span:not(.inventory-token-slot) {
+.slot-store-socket.is-elapse-socket {
+  width: 78px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.slot-store-elapse-pair {
+  justify-self: end;
+}
+
+.slot-store-placeholder {
   display: block;
   width: 28px;
   height: 28px;
@@ -1492,7 +1508,7 @@ input {
   box-shadow: 0 0 14px rgba(255, 242, 190, 0.22);
 }
 
-.forgery-token-slot {
+.slot-store-token-slot {
   width: 54px;
   min-width: 0;
   border-color: transparent;
@@ -1501,7 +1517,7 @@ input {
   align-self: center;
 }
 
-.forgery-token-slot .inventory-token.is-disabled {
+.slot-store-token-slot .inventory-token.is-disabled {
   opacity: 1;
 }
 

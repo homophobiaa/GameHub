@@ -371,6 +371,32 @@ export class GameRenderer {
         return;
       }
 
+      if (effect.kind === "impactRadius") {
+        const alpha = clamp(effect.ttl / 0.22, 0, 1);
+        const x = this.laneCenter(effect.lane);
+        const y = this.yToScreen(effect.y);
+        const radius = effect.radius * (this.height - 72);
+
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = alpha * 0.18;
+        ctx.fillStyle = effect.color;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = alpha * 0.86;
+        ctx.strokeStyle = effect.color;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = effect.color;
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
       if (effect.kind === "ring") {
         const progress = 1 - clamp(effect.ttl / effect.duration, 0, 1);
         const radius = effect.radius + progress * effect.growth;

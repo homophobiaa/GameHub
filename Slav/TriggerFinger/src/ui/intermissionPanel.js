@@ -1,4 +1,4 @@
-import { getBulletDef, getSlotColor, getSlotName, isElapsePiece } from "../defs/bullets.js";
+import { getBulletDef, getElapseHalf, getSlotColor, getSlotName, isElapsePiece } from "../defs/bullets.js";
 import { CHIP_TUNING } from "../defs/chips.js";
 import { getEnemyDef } from "../defs/enemies.js";
 import {
@@ -50,6 +50,15 @@ function getScrappableCount(track) {
   }).length;
 }
 
+function getStoreCandidateName(candidate) {
+  if (isElapsePiece(candidate)) {
+    const def = getBulletDef("elapse");
+    return candidate.upgraded ? def.upgradeName : def.name;
+  }
+
+  return getSlotName(candidate);
+}
+
 function renderStoreChoice(choice, index, disabled) {
   if (choice.kind === "add-piece") {
     const def = getBulletDef(choice.bulletId);
@@ -78,44 +87,90 @@ function renderStoreChoice(choice, index, disabled) {
   `;
 }
 
-export function renderWhetstoneSlot(track, disabled, forgeCandidateUid = null) {
+function addTokenClass(html, className) {
+  return html.replace("inventory-token-slot", `inventory-token-slot ${className}`);
+}
+
+function addCandidateTokenAttr(html, source, tokenAttr) {
+  return html.replace(`data-piece-source="${source}"`, `data-piece-source="${source}" ${tokenAttr}`);
+}
+
+function renderSlotCandidateToken({ piece, source, tokenAttr }) {
+  const def = getBulletDef(piece.id);
+  return addCandidateTokenAttr(
+    addTokenClass(
+      renderMiniBullet({
+        def,
+        color: getSlotColor(piece),
+        uid: piece.uid,
+        source,
+        disabled: true,
+        upgraded: Boolean(piece.upgraded),
+        extraClasses: elapseClasses(piece),
+      }),
+      "slot-store-token-slot",
+    ),
+    source,
+    tokenAttr,
+  );
+}
+
+function renderSlotCandidateVisual({ track, candidate, source, tokenAttr }) {
+  if (!candidate) {
+    return `<span class="slot-store-placeholder"></span>`;
+  }
+
+  if (isElapsePiece(candidate) && candidate.groupId) {
+    const group = track.getGroupPieces(candidate.groupId);
+    const left = group.find((piece) => getElapseHalf(piece) === "left");
+    const right = group.find((piece) => getElapseHalf(piece) === "right");
+    const renderHalf = (piece) => piece
+      ? renderSlotCandidateToken({ piece, source, tokenAttr })
+      : "";
+
+    return `
+      <span class="elapse-token-pair slot-store-elapse-pair">
+        ${renderHalf(left)}
+        ${renderHalf(right)}
+      </span>
+    `;
+  }
+
+  return renderSlotCandidateToken({ piece: candidate, source, tokenAttr });
+}
+
+export function renderWhetstoneSlot(track, disabled, whetstoneCandidateUid = null) {
   const upgradeableCount = track.allPieces.filter((piece) => !piece.upgraded).length;
-  const candidate = forgeCandidateUid ? track.findPiece(forgeCandidateUid) : null;
+  const candidate = whetstoneCandidateUid ? track.findPiece(whetstoneCandidateUid) : null;
   const candidateDef = candidate ? getBulletDef(candidate.id) : null;
-  const canForgeCandidate = Boolean(candidate && !candidate.upgraded && !disabled);
+  const canHoneCandidate = Boolean(candidate && !candidate.upgraded && !disabled);
   const description = candidateDef
     ? renderHighlightedText(candidateDef.upgradeDescription, candidateDef.upgradeHighlight)
     : `${upgradeableCount > 0 ? `${upgradeableCount} bullet${upgradeableCount === 1 ? "" : "s"} can be upgraded` : "All bullets upgraded"}`;
   return `
     <div
-      class="forgery-slot ${disabled || upgradeableCount === 0 ? "is-disabled" : ""} ${candidate ? "has-candidate" : ""}"
-      data-forgery-drop
-      ${canForgeCandidate ? `data-action="forge-candidate"` : ""}
+      class="slot-store whetstone-slot ${disabled || upgradeableCount === 0 ? "is-disabled" : ""} ${candidate ? "has-candidate" : ""}"
+      data-whetstone-drop
+      ${canHoneCandidate ? `data-action="hone-candidate"` : ""}
     >
-      <div class="forgery-slot-copy">
-        <strong>${candidate ? `Hone ${escapeHtml(getSlotName(candidate))}` : "Whetstone Slot"}</strong>
+      <div class="slot-store-copy">
+        <strong>${candidate ? `Hone ${escapeHtml(getStoreCandidateName(candidate))}` : "Whetstone Slot"}</strong>
         <small>${description}</small>
-        ${candidate ? `<small>${canForgeCandidate ? "Click the panel to hone." : "No Whetstone pick available."}</small>` : ""}
+        ${candidate ? `<small>${canHoneCandidate ? "Click the panel to hone." : "No Whetstone pick available."}</small>` : ""}
       </div>
-      <span class="forgery-socket">
+      <span class="slot-store-socket ${isElapsePiece(candidate) ? "is-elapse-socket" : ""}">
         ${candidateDef
-          ? renderMiniBullet({
-              def: candidateDef,
-              color: getSlotColor(candidate),
-              uid: candidate.uid,
-              source: "forge-candidate",
-              disabled: true,
-              upgraded: Boolean(candidate.upgraded),
-              extraClasses: elapseClasses(candidate),
-            }).replace("inventory-token-slot", "inventory-token-slot forgery-token-slot")
-              .replace("data-piece-source=\"forge-candidate\"", "data-piece-source=\"forge-candidate\" data-forge-candidate-token")
-          : "<span></span>"}
+          ? renderSlotCandidateVisual({
+              track,
+              candidate,
+              source: "whetstone-candidate",
+              tokenAttr: "data-whetstone-candidate-token",
+            })
+          : `<span class="slot-store-placeholder"></span>`}
       </span>
     </div>
   `;
 }
-
-export const renderForgerySlot = renderWhetstoneSlot;
 
 export function renderWreckerSlot(track, disabled, wreckerCandidateUid = null) {
   const scrappableCount = getScrappableCount(track);
@@ -126,33 +181,29 @@ export function renderWreckerSlot(track, disabled, wreckerCandidateUid = null) {
     : 1;
   const canWreckCandidate = Boolean(candidate && !disabled && track.allPieces.length - groupSize > 0);
   const description = candidateDef
-    ? `Scraps into ${CHIP_TUNING.chipsPerScrap} inert chip${CHIP_TUNING.chipsPerScrap === 1 ? "" : "s"} for later systems.`
+    ? `scraps into ${CHIP_TUNING.chipsPerScrap} chips that can give its effect to another bullet.`
     : `${scrappableCount > 0 ? `${scrappableCount} bullet${scrappableCount === 1 ? "" : "s"} can be scrapped` : "Need at least one bullet left after scrapping"}`;
 
   return `
     <div
-      class="forgery-slot wrecker-slot ${disabled || scrappableCount === 0 ? "is-disabled" : ""} ${candidate ? "has-candidate" : ""}"
+      class="slot-store wrecker-slot ${disabled || scrappableCount === 0 ? "is-disabled" : ""} ${candidate ? "has-candidate" : ""}"
       data-wrecker-drop
       ${canWreckCandidate ? `data-action="wreck-candidate"` : ""}
     >
-      <div class="forgery-slot-copy">
-        <strong>${candidate ? `Scrap ${escapeHtml(getSlotName(candidate))}` : "Wrecker Slot"}</strong>
+      <div class="slot-store-copy">
+        <strong>${candidate ? `Scrap ${escapeHtml(getStoreCandidateName(candidate))}` : "Wrecker Slot"}</strong>
         <small>${description}</small>
         ${candidate ? `<small>${canWreckCandidate ? "Click the panel to scrap." : "No Wrecker pick available."}</small>` : ""}
       </div>
-      <span class="forgery-socket">
+      <span class="slot-store-socket ${isElapsePiece(candidate) ? "is-elapse-socket" : ""}">
         ${candidateDef
-          ? renderMiniBullet({
-              def: candidateDef,
-              color: getSlotColor(candidate),
-              uid: candidate.uid,
+          ? renderSlotCandidateVisual({
+              track,
+              candidate,
               source: "wrecker-candidate",
-              disabled: true,
-              upgraded: Boolean(candidate.upgraded),
-              extraClasses: elapseClasses(candidate),
-            }).replace("inventory-token-slot", "inventory-token-slot forgery-token-slot")
-              .replace("data-piece-source=\"wrecker-candidate\"", "data-piece-source=\"wrecker-candidate\" data-wrecker-candidate-token")
-          : "<span></span>"}
+              tokenAttr: "data-wrecker-candidate-token",
+            })
+          : `<span class="slot-store-placeholder"></span>`}
       </span>
     </div>
   `;
@@ -190,14 +241,14 @@ function renderChipTray(scrapChips = []) {
   `;
 }
 
-function renderEnemyDraftChoice(choice) {
+function renderWoeChoice(choice) {
   const def = getEnemyDef(choice.type);
   const kind = choice.kind ?? "enemy";
   return `
     <button
-      class="store-choice choice-button enemy-draft-choice"
+      class="store-choice choice-button woe-choice"
       style="--enemy-color:${choice.color ?? def.color}"
-      data-action="enemy-choice:${kind}:${choice.type}"
+      data-action="woe-choice:${kind}:${choice.type}"
     >
       <span class="choice-name">${choice.title}</span>
       <span class="choice-copy">${choice.copy ?? def.description}</span>
@@ -214,18 +265,18 @@ export function renderIntermissionPanel({
   storeOffer,
   storePicks = 0,
   bankedStorePicks = 0,
-  forgeCandidateUid = null,
+  whetstoneCandidateUid = null,
   wreckerCandidateUid = null,
   scrapChips = [],
-  enemyDraft = null,
+  woeDraft = null,
   debugTools = "",
   message = "",
 }) {
   const hasStore = Boolean(storeOffer);
   const hasCredits = storePicks > 0;
-  const hasEnemyDraft = Boolean(enemyDraft?.choices?.length);
-  const draftKind = enemyDraft?.kind ?? enemyDraft?.choices?.[0]?.kind ?? "enemy";
-  const hiddenEditorUids = getHiddenEditorUids(track, forgeCandidateUid, wreckerCandidateUid);
+  const hasWoeDraft = Boolean(woeDraft?.choices?.length);
+  const draftKind = woeDraft?.kind ?? woeDraft?.choices?.[0]?.kind ?? "enemy";
+  const hiddenEditorUids = getHiddenEditorUids(track, whetstoneCandidateUid, wreckerCandidateUid);
   const selected = track.findPiece(track.selectedUid);
   const selectedDef = selected ? getBulletDef(selected.id) : null;
   const selectedCopy = selected
@@ -238,7 +289,7 @@ export function renderIntermissionPanel({
         ${debugTools}
       </aside>
       `
-    : hasEnemyDraft
+    : hasWoeDraft
     ? `
       <aside class="store-menu">
         <div class="store-header">
@@ -250,12 +301,12 @@ export function renderIntermissionPanel({
           }</small>
           <small>${
             draftKind === "aspect"
-              ? `${enemyDraft.aspectGrantors?.length ?? 0} spreading special${(enemyDraft.aspectGrantors?.length ?? 0) === 1 ? "" : "s"} active`
-              : `${enemyDraft.unlocked.length - 1} special${enemyDraft.unlocked.length === 2 ? "" : "s"} active`
+              ? `${woeDraft.aspectGrantors?.length ?? 0} spreading special${(woeDraft.aspectGrantors?.length ?? 0) === 1 ? "" : "s"} active`
+              : `${woeDraft.unlocked.length - 1} special${woeDraft.unlocked.length === 2 ? "" : "s"} active`
           }</small>
         </div>
         <div class="store-choice-list">
-          ${enemyDraft.choices.map(renderEnemyDraftChoice).join("")}
+          ${woeDraft.choices.map(renderWoeChoice).join("")}
         </div>
       </aside>
       `
@@ -268,7 +319,7 @@ export function renderIntermissionPanel({
           <small>${storePicks} pick${storePicks === 1 ? "" : "s"} available${bankedStorePicks ? `, ${bankedStorePicks} banked` : ""}</small>
         </div>
         ${storeOffer.store.id === "whetstone"
-          ? renderWhetstoneSlot(track, !hasCredits, forgeCandidateUid)
+          ? renderWhetstoneSlot(track, !hasCredits, whetstoneCandidateUid)
           : storeOffer.store.id === "wrecker"
           ? renderWreckerSlot(track, !hasCredits, wreckerCandidateUid)
           : `
@@ -312,7 +363,7 @@ export function renderIntermissionPanel({
       <div class="upgrade-actions">
         ${debugTools
           ? `<button class="secondary-button" data-debug-action="toggle-panel">Close Debug</button>`
-          : `<button class="primary-button" data-action="start-wave" ${track.placements.length === 0 || hasCredits || hasEnemyDraft ? "disabled" : ""}>Start Wave ${waveIndex + 1}</button>`}
+          : `<button class="primary-button" data-action="start-wave" ${track.placements.length === 0 || hasCredits || hasWoeDraft ? "disabled" : ""}>Start Wave ${waveIndex + 1}</button>`}
       </div>
     </section>
   `;
