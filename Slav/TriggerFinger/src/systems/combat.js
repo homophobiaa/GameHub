@@ -54,15 +54,75 @@ export function resolveBulletShot({
   return events;
 }
 
+function getImpactLane(impact, originalTarget = null) {
+  return Number.isInteger(impact.lane)
+    ? impact.lane
+    : originalTarget?.lane;
+}
+
+function getImpactY(impact, originalTarget = null) {
+  return Number.isFinite(impact.y)
+    ? impact.y
+    : originalTarget?.y;
+}
+
+function findFallbackImpactTarget(enemyIndex, impact, originalTarget) {
+  if (originalTarget?.hp > 0 && originalTarget.targetable !== false) {
+    return originalTarget;
+  }
+
+  const lane = getImpactLane(impact, originalTarget);
+  if (!Number.isInteger(lane)) {
+    return null;
+  }
+
+  const plannedY = getImpactY(impact, originalTarget);
+  const candidates = enemyIndex
+    .targetableInLane(lane)
+    .filter((enemy) => enemy.id !== originalTarget?.id);
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  if (!Number.isFinite(plannedY)) {
+    return candidates[0];
+  }
+
+  return candidates.reduce((best, enemy) => {
+    const bestDistance = Math.abs(best.y - plannedY);
+    const enemyDistance = Math.abs(enemy.y - plannedY);
+    return enemyDistance < bestDistance ? enemy : best;
+  }, candidates[0]);
+}
+
+function pushLostPiercingImpactEvent(events, impact, originalTarget) {
+  const lane = getImpactLane(impact, originalTarget) ?? 1;
+  const y = getImpactY(impact, originalTarget) ?? 0.82;
+  events.push({
+    kind: "hit",
+    lane,
+    y,
+    text: "miss",
+    color: "#e65d5d",
+  });
+  console.warn("Piercing impact had no valid target", { impact, originalTarget });
+}
+
 export function resolvePiercingImpact({ impact, enemies, currentBeat }) {
   const enemyIndex = toEnemyFrameIndex(enemies);
-  const target = enemyIndex.findById(impact.targetId);
+  const originalTarget = enemyIndex.findById(impact.targetId);
+  const target = findFallbackImpactTarget(enemyIndex, impact, originalTarget);
   const events = [];
-  if (!target || target.hp <= 0) {
+  if (!target) {
+    pushLostPiercingImpactEvent(events, impact, originalTarget);
     return events;
   }
 
-  if (impact.guard) {
+  const retargeted = target.id !== originalTarget?.id;
+  const lane = retargeted ? target.lane : impact.lane ?? target.lane;
+  const y = retargeted ? target.y : impact.y ?? target.y;
+
+  if (impact.guard && !retargeted) {
     const protectedTarget = enemyIndex.findById(impact.guardedTargetId) ?? {
       id: impact.guardedTargetId,
       lane: impact.lane,
@@ -79,14 +139,24 @@ export function resolvePiercingImpact({ impact, enemies, currentBeat }) {
       effects: impact.effects,
       target,
       enemies: enemyIndex,
-      lane: impact.lane ?? target.lane,
-      y: impact.y ?? target.y,
+      lane,
+      y,
       currentBeat,
       events,
     });
   }
+  if (!result.damaged && !result.passedThrough) {
+    events.push({
+      kind: "hit",
+      lane,
+      y,
+      text: "no hit",
+      color: "#e65d5d",
+    });
+    console.warn("Piercing impact did not apply damage", { impact, target });
+  }
   if (Number.isFinite(impact.knockback) && !result.passedThrough) {
-    const knockbackTarget = impact.knockbackTargetId
+    const knockbackTarget = !retargeted && impact.knockbackTargetId
       ? enemyIndex.findById(impact.knockbackTargetId)
       : target;
     knockEnemyBack(knockbackTarget, impact.knockback);

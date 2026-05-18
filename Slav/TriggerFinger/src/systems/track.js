@@ -341,7 +341,7 @@ export class BeatTrack {
   getTransitionGap(fromIndex, toIndex) {
     const gap = this.getGapBetweenPlacements(fromIndex, toIndex);
     return this.isWrapTransition(fromIndex, toIndex)
-      ? Math.max(gap, TRACK_RELOAD_BEATS)
+      ? gap + TRACK_RELOAD_BEATS
       : gap;
   }
 
@@ -392,7 +392,7 @@ export class BeatTrack {
     if (safeCurrentBeat < finiteBeat(this.lockUntilBeat) - EPSILON) {
       return {
         blocked: true,
-        reason: safeCurrentBeat < finiteBeat(this.reloadUntilBeat, -Infinity) - EPSILON ? "reload" : "wait",
+        reason: "wait",
         entry: this.currentEntry,
         targetBeat: this.targetBeat,
         waitBeats: finiteBeat(this.lockUntilBeat) - safeCurrentBeat,
@@ -430,9 +430,8 @@ export class BeatTrack {
       nextEntry,
       nextEntry.def,
     );
-    const reloadReleaseBeat = didWrap ? safeTargetBeat + TRACK_RELOAD_BEATS : null;
-    this.reloadUntilBeat = reloadReleaseBeat;
-    this.readyAfterBeat = didWrap ? reloadReleaseBeat : safeTargetBeat + HALF_BEAT;
+    this.reloadUntilBeat = didWrap ? safeTargetBeat + TRACK_RELOAD_BEATS : null;
+    this.readyAfterBeat = safeTargetBeat + HALF_BEAT;
     this.lockUntilBeat = this.readyAfterBeat;
     this.baseTargetBeat = nextTargetBeat;
     this.targetBeat = this.getTargetBeat(this.readyAfterBeat);

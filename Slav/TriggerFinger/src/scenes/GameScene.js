@@ -1551,8 +1551,8 @@ export class GameScene {
         currentSecond: this.runSeconds,
       });
     }
-    this.updateEchoes(createEnemyFrameIndex(this.enemies));
-    this.updateChipShots(createEnemyFrameIndex(this.enemies));
+    this.updateEchoes();
+    this.updateChipShots();
     this.updateEnemies(dt, createEnemyFrameIndex(this.enemies));
     this.updateElapse(dt, createEnemyFrameIndex(this.enemies));
     this.updateEffects(dt);
@@ -1661,11 +1661,12 @@ export class GameScene {
     this.lastWholeBeat = whole;
   }
 
-  updateEchoes(enemyIndex = createEnemyFrameIndex(this.enemies)) {
+  updateEchoes() {
     const ready = this.echoes.filter((echo) => echo.fireBeat <= this.beat);
     this.echoes = this.echoes.filter((echo) => echo.fireBeat > this.beat);
 
     ready.forEach((echo) => {
+      const enemyIndex = createEnemyFrameIndex(this.enemies);
       const events = resolveBulletShot({
         slot: echo.slot,
         lane: echo.lane,
@@ -1674,6 +1675,7 @@ export class GameScene {
         targetBeat: this.beat,
         beatSeconds: this.beatSeconds,
         damageMultiplier: this.damageMultiplier() * 0.95,
+        chipEffects: echo.slot.uid ? this.getCombatChipsForSlot(echo.slot.uid) : [],
         scheduleEcho: () => {},
       });
       this.consumeCombatEvents(events, "echo");
@@ -1698,11 +1700,12 @@ export class GameScene {
       });
   }
 
-  updateChipShots(enemyIndex = createEnemyFrameIndex(this.enemies)) {
+  updateChipShots() {
     const ready = this.pendingChipShots.filter((shot) => shot.fireBeat <= this.beat);
     this.pendingChipShots = this.pendingChipShots.filter((shot) => shot.fireBeat > this.beat);
 
     ready.forEach((shot) => {
+      const enemyIndex = createEnemyFrameIndex(this.enemies);
       const events = resolvePairChipShot({
         lane: shot.lane,
         enemies: enemyIndex,
@@ -1727,6 +1730,10 @@ export class GameScene {
     const movementDt = this.areEnemiesPaused() ? 0 : dt;
 
     this.enemies.forEach((enemy) => {
+      if (enemy.hp <= 0) {
+        return;
+      }
+
       if (enemy.leap && !enemy.targetable) {
         updateLeapEnemy(enemy, enemyIndex, this.beat);
         return;
