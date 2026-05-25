@@ -8,9 +8,10 @@ type Props = {
 };
 
 export default function TeacherSpotlight({ teacher, extras }: Props) {
+  const hasExtras = extras.length > 0;
   return (
-    <div className="grid lg:grid-cols-3 gap-5">
-      {/* Teacher (spans 2) */}
+    <div className={hasExtras ? 'grid lg:grid-cols-3 gap-5' : 'flex flex-col gap-5'}>
+      {/* Teacher */}
       <motion.a
         href={`https://github.com/${teacher.github}`}
         target="_blank"
@@ -19,8 +20,8 @@ export default function TeacherSpotlight({ teacher, extras }: Props) {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-60px' }}
         transition={{ duration: 0.6 }}
-        className="group relative lg:col-span-2 overflow-hidden rounded-2xl border border-hairline bg-surface-1
-          hover:border-hairline-strong hover:-translate-y-0.5 transition-all duration-300"
+        className={`group relative overflow-hidden rounded-2xl border border-hairline bg-surface-1
+          hover:border-hairline-strong hover:-translate-y-0.5 transition-all duration-300${hasExtras ? ' lg:col-span-2' : ''}`}
       >
         {/* ambient glow */}
         <div className="pointer-events-none absolute -top-32 -left-32 h-72 w-72 rounded-full blur-3xl"

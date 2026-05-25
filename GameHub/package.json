@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "copy-games": "node scripts/copy-games.mjs",
+    "predev": "node scripts/copy-games.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-games.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "tsc -b"

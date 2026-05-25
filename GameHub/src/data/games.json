@@ -33,7 +33,7 @@
     "status": "Playable",
     "tags": ["Typing", "Speed", "Arcade"],
     "branch": "Ivailo",
-    "playUrl": "../Games/Ivailo-SpeedTypingArena/index.html"
+    "playUrl": "/Games/Ivailo-SpeedTypingArena/index.html"
   },
   {
     "id": "miroslav",
@@ -45,7 +45,7 @@
     "status": "Playable",
     "tags": ["Memory", "Puzzle"],
     "branch": "Miroslav",
-    "playUrl": "../Games/Miroslav-DirectionMemoryGame/index.html"
+    "playUrl": "/Games/Miroslav-DirectionMemoryGame/index.html"
   },
   {
     "id": "hristiqn",
@@ -57,7 +57,7 @@
     "status": "Playable",
     "tags": ["Memory", "Cards", "Puzzle"],
     "branch": "Hristiqn",
-    "playUrl": "../Games/Hristiqn-MemoryGameJS/index.html"
+    "playUrl": "/Games/Hristiqn-MemoryGameJS/index.html"
   },
   {
     "id": "dimitar",
@@ -81,7 +81,7 @@
     "status": "Playable",
     "tags": ["Reaction", "Speed", "Grid"],
     "branch": "Lubo",
-    "playUrl": "../Games/Lubo-ReactionGridGame/index.html"
+    "playUrl": "/Games/Lubo-ReactionGridGame/index.html"
   },
   {
     "id": "slav",
@@ -105,7 +105,7 @@
     "status": "Playable",
     "tags": ["Memory", "Classic", "Sequence"],
     "branch": "Damyan",
-    "playUrl": "../Games/Damyan-Simon/index.html"
+    "playUrl": "/Games/Damyan-Simon/index.html"
   },
   {
     "id": "viktor",
