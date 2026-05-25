@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
-import { Github, Play, GitBranch, ImageOff } from 'lucide-react';
+import { Github, Play, GitBranch, ImageOff, ExternalLink } from 'lucide-react';
 import type { Game } from '../types/game';
 
 type Props = {
@@ -165,9 +165,13 @@ export default function GameCard({ game, index }: Props) {
             <CreatorAvatar name={game.creator} />
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-[0.16em] text-ink-tertiary">
-                Creator
+                {game.coCreators && game.coCreators.length > 0 ? 'Team' : 'Creator'}
               </div>
-              <div className="text-sm font-medium text-ink truncate">{game.creator}</div>
+              <div className="text-sm font-medium text-ink truncate">
+                {game.coCreators && game.coCreators.length > 0
+                  ? `${game.creator} & ${game.coCreators.map((c) => c.name).join(', ')}`
+                  : game.creator}
+              </div>
             </div>
           </div>
 
@@ -192,14 +196,40 @@ export default function GameCard({ game, index }: Props) {
                 <Github className="h-4 w-4" />
               </span>
             )}
-            <a
-              href={game.playUrl}
-              className="btn-primary !py-2 !px-3 text-xs"
-              aria-label={`Open ${game.name}`}
-            >
-              <Play className="h-3.5 w-3.5" />
-              Open
-            </a>
+            {game.coCreators && game.coCreators.map((cc) => (
+              <a
+                key={cc.github}
+                href={`https://github.com/${cc.github}`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="btn-ghost !px-2.5"
+                aria-label={`${cc.name} on GitHub`}
+                title={`@${cc.github}`}
+              >
+                <Github className="h-4 w-4" />
+              </a>
+            ))}
+            {game.playUrl !== '#' ? (
+              <a
+                href={game.playUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="btn-primary !py-2 !px-3 text-xs"
+                aria-label={`Play ${game.name}`}
+              >
+                <Play className="h-3.5 w-3.5" />
+                Play
+                <ExternalLink className="h-3 w-3 opacity-60" />
+              </a>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1.5 btn-secondary !py-2 !px-3 text-xs opacity-50 cursor-not-allowed"
+                title="Coming soon"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Soon
+              </span>
+            )}
           </div>
         </div>
       </div>

@@ -5,12 +5,5 @@
     "github": "Ivanzhela",
     "description": "Mentor and lead instructor guiding the SoftUni class through the entire showcase journey — from first commit to launch day."
   },
-  "additionalContributors": [
-    {
-      "name": "Boyan Tsarski",
-      "role": "Contributor",
-      "github": "BoyanTsarski",
-      "description": "Additional contributor supporting the hub and class projects."
-    }
-  ]
+  "additionalContributors": []
 }

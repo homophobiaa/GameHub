@@ -154,7 +154,7 @@ function HeroVisual() {
       initial={{ opacity: 0, y: 32, rotate: -2 }}
       animate={{ opacity: 1, y: 0, rotate: 0 }}
       transition={{ duration: 0.9, ease: 'easeOut', delay: 0.2 }}
-      className="relative h-[460px] hidden lg:block"
+      className="relative h-[540px] hidden lg:block"
     >
       {/* glow */}
       <div className="absolute inset-0 -m-10 rounded-[2rem] bg-gradient-to-tr from-accent/25 via-accent-violet/15 to-transparent blur-3xl" />
@@ -162,7 +162,7 @@ function HeroVisual() {
       {/* floating logo badge */}
       <motion.div
         aria-hidden
-        className="absolute -top-6 -left-6 h-20 w-20 rounded-2xl bg-canvas-deep border border-hairline-strong grid place-items-center overflow-hidden z-20 shadow-2xl"
+        className="absolute -top-6 -left-6 h-20 w-20 rounded-2xl bg-canvas-deep border border-hairline-strong grid place-items-center overflow-hidden z-10 shadow-2xl"
         animate={{ y: [0, -8, 0], rotate: [0, 2, 0] }}
         transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
       >
@@ -190,11 +190,11 @@ function HeroVisual() {
         {/* mock list */}
         <div className="space-y-2.5">
           {[
-            { n: "Deyan's Game", s: 'In development', c: 'from-accent to-accent-violet' },
-            { n: "Radoslav's Game", s: 'In development', c: 'from-cyan-400/80 to-accent' },
-            { n: "Ivailo's Game", s: 'In development', c: 'from-accent-violet to-pink-400/80' },
-            { n: "Miroslav's Game", s: 'In development', c: 'from-accent to-cyan-400/80' },
-            { n: "Hristiqn's Game", s: 'In development', c: 'from-pink-400/80 to-accent' },
+            { n: 'Simon', s: 'Playable', c: 'from-accent to-accent-violet' },
+            { n: 'Speed Typing Arena', s: 'Playable', c: 'from-cyan-400/80 to-accent' },
+            { n: 'Memory Game', s: 'Playable', c: 'from-accent-violet to-pink-400/80' },
+            { n: 'Reaction Grid Game', s: 'Playable', c: 'from-accent to-cyan-400/80' },
+            { n: 'Direction Memory', s: 'Playable', c: 'from-pink-400/80 to-accent' },
           ].map((g, i) => (
             <motion.div
               key={g.n}
@@ -212,8 +212,8 @@ function HeroVisual() {
                 <div className="text-sm font-medium text-ink truncate">{g.n}</div>
                 <div className="text-[11px] text-ink-tertiary">SoftUni · Student</div>
               </div>
-              <span className="pill">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse-soft" />
+              <span className="pill" style={{ color: g.s === 'Playable' ? 'rgb(134 239 172)' : undefined }}>
+                <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse-soft" />
                 {g.s}
               </span>
             </motion.div>
@@ -229,14 +229,14 @@ function HeroVisual() {
         </div>
       </motion.div>
 
-      {/* floating profile chip */}
+      {/* floating profile chip — positioned below the main panel */}
       <motion.a
         href="https://github.com/homophobiaa"
         target="_blank"
         rel="noreferrer noopener"
-        animate={{ y: [0, -10, 0] }}
+        animate={{ y: [0, -7, 0] }}
         transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-        className="absolute -left-10 top-44 w-56 glass-panel p-3 shadow-2xl flex items-center gap-3 hover:border-hairline-strong transition-colors z-20"
+        className="absolute bottom-4 left-0 w-52 glass-panel p-3 shadow-2xl flex items-center gap-3 hover:border-hairline-strong transition-colors z-20"
       >
         <div className="relative">
           <img src="/pfp.png" alt="Deyan" className="h-10 w-10 rounded-full object-cover ring-2 ring-accent/40" />
@@ -248,11 +248,11 @@ function HeroVisual() {
         </div>
       </motion.a>
 
-      {/* floating side card */}
+      {/* floating side card — positioned below the main panel */}
       <motion.div
-        animate={{ y: [0, 8, 0] }}
+        animate={{ y: [0, -6, 0] }}
         transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-        className="absolute -right-6 -bottom-6 w-56 glass-panel p-4 shadow-2xl"
+        className="absolute bottom-4 right-0 w-48 glass-panel p-4 shadow-2xl"
       >
         <div className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">
           Now showcasing

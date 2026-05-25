@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Github, Sparkles } from 'lucide-react';
+import { Github, Sparkles, Users } from 'lucide-react';
 import type { Game } from '../types/game';
 
 type Props = {
@@ -32,9 +32,93 @@ export default function ContributorsWall({ games }: Props) {
       {/* contributor chip grid */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {games.map((g, i) => {
+          const isCollab = g.coCreators && g.coCreators.length > 0;
           const hue = hashHue(g.creator);
           const hasGh = g.creatorGithub.trim().length > 0;
           const href = hasGh ? `https://github.com/${g.creatorGithub}` : undefined;
+
+          // For collab games, render a single merged chip showing both creators
+          if (isCollab) {
+            return (
+              <motion.div
+                key={g.id}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-40px' }}
+                transition={{ duration: 0.5, delay: Math.min(i * 0.03, 0.3) }}
+              >
+                <div className="group relative block overflow-hidden rounded-2xl border border-hairline bg-surface-1/70 backdrop-blur p-4">
+                  <div
+                    className="pointer-events-none absolute -inset-px rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{
+                      background: `radial-gradient(280px circle at 50% 0%, hsla(${hue},80%,70%,0.18), transparent 60%)`,
+                    }}
+                  />
+                  <div className="relative">
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-ink-tertiary mb-2.5">
+                      <Users className="h-3 w-3" />
+                      Team
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {/* Main creator */}
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="flex items-center gap-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity"
+                        title={`@${g.creatorGithub}`}
+                      >
+                        <div
+                          className="h-9 w-9 rounded-full grid place-items-center text-xs font-bold text-canvas-deep ring-1 ring-white/10 shrink-0"
+                          style={{
+                            background: `linear-gradient(135deg, hsl(${hue} 80% 70%), hsl(${(hue + 60) % 360} 75% 60%))`,
+                          }}
+                        >
+                          {initials(g.creator)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-ink truncate">{g.creator}</div>
+                          <div className="text-[11px] text-ink-subtle font-mono truncate">@{g.creatorGithub}</div>
+                        </div>
+                      </a>
+
+                      <span className="text-ink-tertiary text-xs">&amp;</span>
+
+                      {/* Co-creator(s) */}
+                      {g.coCreators!.map((cc) => {
+                        const ccHue = hashHue(cc.name);
+                        return (
+                          <a
+                            key={cc.github}
+                            href={`https://github.com/${cc.github}`}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="flex items-center gap-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity"
+                            title={`@${cc.github}`}
+                          >
+                            <div
+                              className="h-9 w-9 rounded-full grid place-items-center text-xs font-bold text-canvas-deep ring-1 ring-white/10 shrink-0"
+                              style={{
+                                background: `linear-gradient(135deg, hsl(${ccHue} 80% 70%), hsl(${(ccHue + 60) % 360} 75% 60%))`,
+                              }}
+                            >
+                              {initials(cc.name)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-ink truncate">{cc.name}</div>
+                              <div className="text-[11px] text-ink-subtle font-mono truncate">@{cc.github}</div>
+                            </div>
+                          </a>
+                        );
+                      })}
+
+                      <Github className="h-4 w-4 text-ink-tertiary group-hover:text-accent transition-colors shrink-0" />
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          }
 
           const Wrapper = ({ children }: { children: React.ReactNode }) =>
             hasGh ? (
