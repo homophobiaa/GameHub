@@ -1,4 +1,10 @@
 # SoftUni GameHub
+
+
+<div align="center">
+
+<img src="./GameHub/public/logo.svg" alt="RiskIndex Logo" width="120"/>
+
 ![Status](https://img.shields.io/badge/status-active-success)
 ![React](https://img.shields.io/badge/react-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/typescript-3178C6?logo=typescript&logoColor=white)
@@ -8,6 +14,12 @@
 A community-driven game showcase platform created for a SoftUni school event.
 
 This project combines multiple student-made games into a single modern platform where visitors can browse, launch, and experience different projects in one place.
+
+<br/>
+
+🌐 **Website:** [gamehubbg.com](https://gamehubbg.com?utm_source=github.com)
+
+</div>
 
 ---
 
