@@ -1,9 +1,0 @@
-node_modules
-dist
-dist-ssr
-*.local
-public/Games
-.vscode/*
-!.vscode/extensions.json
-.DS_Store
-*.log
