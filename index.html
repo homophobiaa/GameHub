@@ -73,19 +73,14 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .score-value.bump{color:var(--yellow);text-shadow:0 0 12px var(--yellow-glow);transform:scale(1.2)}
 .sep{width:1px;height:36px;background:var(--border)}
 .board{width:clamp(260px,50vw,340px);height:clamp(260px,50vw,340px);border-radius:50%;position:relative;background:var(--panel);border:2px solid var(--border);box-shadow:0 0 40px rgba(0,0,0,0.8),inset 0 0 30px rgba(0,0,0,0.5)}
-.btn{position:absolute;width:calc(50% - 6px);height:calc(50% - 6px);cursor:pointer;transition:filter 0.08s;border:none;outline:none;-webkit-appearance:none}
-.btn-green{top:3px;left:3px;border-radius:100% 0 0 0;background:var(--green-dim);border-right:2px solid var(--bg);border-bottom:2px solid var(--bg);clip-path:circle(70.7% at 100% 100%)}
-.btn-red{top:3px;right:3px;border-radius:0 100% 0 0;background:var(--red-dim);border-left:2px solid var(--bg);border-bottom:2px solid var(--bg);clip-path:circle(70.7% at 0% 100%)}
-.btn-blue{bottom:3px;left:3px;border-radius:0 0 0 100%;background:var(--blue-dim);border-right:2px solid var(--bg);border-top:2px solid var(--bg);clip-path:circle(70.7% at 100% 0%)}
-.btn-yellow{bottom:3px;right:3px;border-radius:0 0 100% 0;background:var(--yellow-dim);border-left:2px solid var(--bg);border-top:2px solid var(--bg);clip-path:circle(70.7% at 0% 0%)}
-.btn-green:hover{filter:brightness(1.5)}
-.btn-red:hover{filter:brightness(1.5)}
-.btn-blue:hover{filter:brightness(1.5)}
-.btn-yellow:hover{filter:brightness(1.5)}
-.btn-green.active{background:var(--green);filter:drop-shadow(0 0 20px var(--green-glow)) drop-shadow(0 0 40px var(--green-glow))}
-.btn-red.active{background:var(--red);filter:drop-shadow(0 0 20px var(--red-glow)) drop-shadow(0 0 40px var(--red-glow))}
-.btn-blue.active{background:var(--blue);filter:drop-shadow(0 0 20px var(--blue-glow)) drop-shadow(0 0 40px var(--blue-glow))}
-.btn-yellow.active{background:var(--yellow);filter:drop-shadow(0 0 20px var(--yellow-glow)) drop-shadow(0 0 40px var(--yellow-glow))}
+.btn{position:absolute;width:calc(50% - 6px);height:calc(50% - 6px);cursor:pointer;transition:filter 0.08s, background 0.35s;border:none;outline:none;-webkit-appearance:none}
+/* positions are fixed; colors are applied dynamically via JS */
+.btn-pos-tl{top:3px;left:3px;border-radius:100% 0 0 0;border-right:2px solid var(--bg);border-bottom:2px solid var(--bg);clip-path:circle(70.7% at 100% 100%)}
+.btn-pos-tr{top:3px;right:3px;border-radius:0 100% 0 0;border-left:2px solid var(--bg);border-bottom:2px solid var(--bg);clip-path:circle(70.7% at 0% 100%)}
+.btn-pos-bl{bottom:3px;left:3px;border-radius:0 0 0 100%;border-right:2px solid var(--bg);border-top:2px solid var(--bg);clip-path:circle(70.7% at 100% 0%)}
+.btn-pos-br{bottom:3px;right:3px;border-radius:0 0 100% 0;border-left:2px solid var(--bg);border-top:2px solid var(--bg);clip-path:circle(70.7% at 0% 0%)}
+.btn:hover{filter:brightness(1.5)}
+.btn.active{filter:drop-shadow(0 0 20px currentColor) drop-shadow(0 0 40px currentColor)}
 .center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28%;height:28%;border-radius:50%;background:var(--bg);border:2px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10;gap:2px}
 .center-round{font-family:'Orbitron',monospace;font-size:clamp(0.9rem,2vw,1.2rem);font-weight:700;color:var(--text);line-height:1}
 .center-label{font-size:0.45rem;letter-spacing:0.2em;color:var(--text-dim);text-transform:uppercase}
@@ -95,6 +90,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .status.fail{color:var(--red);text-shadow:0 0 8px var(--red-glow);animation:flicker 0.1s steps(1) 4}
 .status.win{color:var(--yellow);text-shadow:0 0 8px var(--yellow-glow)}
 .status.qte-alert{color:#ff6600;text-shadow:0 0 8px rgba(255,102,0,0.6);animation:pulse-alert 0.3s ease infinite alternate}
+.status.qte-blue{color:var(--blue);text-shadow:0 0 8px var(--blue-glow);animation:pulse-alert 0.3s ease infinite alternate}
 @keyframes pulse-alert{from{opacity:0.7}to{opacity:1}}
 @keyframes flicker{0%,100%{opacity:1}50%{opacity:0}}
 .controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
@@ -106,26 +102,38 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .flash.show{opacity:0.12}
 .flash-orange{position:fixed;inset:0;background:#ff6600;opacity:0;pointer-events:none;z-index:200;transition:opacity 0.05s}
 .flash-orange.show{opacity:0.18}
+.flash-blue{position:fixed;inset:0;background:var(--blue);opacity:0;pointer-events:none;z-index:200;transition:opacity 0.05s}
+.flash-blue.show{opacity:0.14}
 @keyframes toastAnim{0%{opacity:0;transform:translateX(-50%) scale(0.85)}20%{opacity:1;transform:translateX(-50%) scale(1.05)}70%{opacity:1;transform:translateX(-50%) scale(1)}100%{opacity:0;transform:translateX(-50%) scale(1)}}
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);font-family:'Orbitron',monospace;font-size:0.72rem;font-weight:700;letter-spacing:0.25em;text-transform:uppercase;padding:10px 24px;background:var(--panel);border:1px solid var(--yellow);color:var(--yellow);text-shadow:0 0 10px var(--yellow-glow);box-shadow:0 0 24px rgba(255,221,0,0.2);border-radius:2px;z-index:400;pointer-events:none;opacity:0}
 .toast.show{animation:toastAnim 2.2s ease forwards}
 
 /* QTE */
 #qte-layer{position:fixed;inset:0;pointer-events:none;z-index:250}
-#qte-layer.active{pointer-events:auto}
 .qte-target{position:absolute;transform:translate(-50%,-50%);cursor:pointer;pointer-events:auto}
+/* orange QTE — must click */
 .qte-inner{border-radius:50%;background:rgba(255,102,0,0.9);box-shadow:0 0 18px rgba(255,102,0,0.7);transition:transform 0.08s}
 .qte-inner:hover{transform:scale(1.08)}
 .qte-inner.hit{background:#00ff88;box-shadow:0 0 24px var(--green-glow)}
+/* blue QTE — must NOT click */
+.qte-inner-blue{border-radius:50%;background:rgba(0,140,255,0.92);box-shadow:0 0 18px rgba(0,140,255,0.7);transition:transform 0.08s;display:flex;align-items:center;justify-content:center}
+.qte-inner-blue .qte-avoid-label{font-family:'Orbitron',monospace;font-size:0.55rem;font-weight:700;color:#fff;letter-spacing:0.1em;pointer-events:none;user-select:none}
+.qte-inner-blue.bad-hit{background:var(--red);box-shadow:0 0 24px var(--red-glow)}
 .qte-ring{position:absolute;border-radius:50%;border:3px solid rgba(255,102,0,0.85);box-shadow:0 0 10px rgba(255,102,0,0.4)}
+.qte-ring-blue{position:absolute;border-radius:50%;border:3px solid rgba(0,140,255,0.85);box-shadow:0 0 10px rgba(0,140,255,0.4)}
 @keyframes qte-warn{0%,100%{opacity:1}50%{opacity:0.5}}
 .qte-target.urgent .qte-ring{animation:qte-warn 0.25s ease infinite;border-color:var(--red)}
+.qte-target.urgent-blue .qte-ring-blue{animation:qte-warn 0.25s ease infinite;border-color:#fff}
+
+/* shuffle fly tiles */
+.shuffle-tile{position:fixed;border-radius:50%;pointer-events:none;z-index:500;will-change:transform,width,height,left,top}
 </style>
 </head>
 <body>
 
 <div class="flash" id="flash"></div>
 <div class="flash-orange" id="flash-orange"></div>
+<div class="flash-blue" id="flash-blue"></div>
 <div class="toast" id="toast">NEW BEST!</div>
 <div id="qte-layer"></div>
 
@@ -186,11 +194,8 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
     </div>
   </div>
 
-  <div class="board">
-    <button class="btn btn-green" id="green"></button>
-    <button class="btn btn-red" id="red"></button>
-    <button class="btn btn-blue" id="blue"></button>
-    <button class="btn btn-yellow" id="yellow"></button>
+  <div class="board" id="board">
+    <!-- buttons injected by JS with position classes -->
     <div class="center">
       <div class="center-round" id="center-round">—</div>
       <div class="center-label">level</div>
@@ -218,12 +223,163 @@ const SK = 'simon_v2';
 const load = () => { try { return JSON.parse(sessionStorage.getItem(SK)) || {}; } catch { return {}; } };
 const store = p => sessionStorage.setItem(SK, JSON.stringify(p));
 
+// ═══════════════ COLOR / POSITION SYSTEM ═══════════════
+// Positions: 0=TL, 1=TR, 2=BL, 3=BR  (fixed slots on the board)
+// Colors: green, red, blue, yellow  (can be in any slot)
+// colorAtPos[i] = which color is currently in slot i
+const POS_CLASSES = ['btn-pos-tl','btn-pos-tr','btn-pos-bl','btn-pos-br'];
+const POS_NAMES   = ['tl','tr','bl','br'];
+// keyboard keys map to positions: w=TL, e=TR, s=BL, d=BR
+const KEY_TO_POS  = { w:0, e:1, s:2, d:3 };
+
+const COLOR_STYLES = {
+  green:  { dim:'#003320', bright:'#00ff88', glow:'rgba(0,255,136,0.4)'  },
+  red:    { dim:'#330010', bright:'#ff2244', glow:'rgba(255,34,68,0.4)'  },
+  blue:   { dim:'#001a33', bright:'#00aaff', glow:'rgba(0,170,255,0.4)'  },
+  yellow: { dim:'#332b00', bright:'#ffdd00', glow:'rgba(255,221,0,0.4)'  },
+};
+const TONES = { green:415, red:310, yellow:252, blue:209 };
+const COLORS = ['green','red','blue','yellow'];
+
+// colorAtPos[posIdx] = colorName
+let colorAtPos = ['green','red','blue','yellow']; // default layout: TL=green,TR=red,BL=blue,BR=yellow
+
+// posOfColor: reverse lookup
+function posOfColor(c) { return colorAtPos.indexOf(c); }
+
+// DOM buttons by position index
+let posBtns = []; // posBtns[0..3] = DOM elements for TL,TR,BL,BR
+
+function buildBoard() {
+  const board = document.getElementById('board');
+  // Remove old buttons (keep .center)
+  board.querySelectorAll('.btn').forEach(b => b.remove());
+  posBtns = [];
+  POS_CLASSES.forEach((cls, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn ' + cls;
+    btn.dataset.pos = i;
+    board.appendChild(btn);
+    posBtns.push(btn);
+    btn.addEventListener('mousedown', () => handlePosPress(i));
+    btn.addEventListener('touchstart', e => { e.preventDefault(); handlePosPress(i); }, { passive: false });
+  });
+  applyColors();
+}
+
+function applyColors() {
+  posBtns.forEach((btn, i) => {
+    const c = colorAtPos[i];
+    const st = COLOR_STYLES[c];
+    btn.style.background = st.dim;
+    btn.dataset.color = c;
+  });
+}
+
+function activatePos(pos, dur) {
+  return new Promise(res => {
+    const btn = posBtns[pos];
+    const c = colorAtPos[pos];
+    const st = COLOR_STYLES[c];
+    btn.style.background = st.bright;
+    btn.style.filter = `drop-shadow(0 0 20px ${st.glow}) drop-shadow(0 0 40px ${st.glow})`;
+    tone(TONES[c], dur * 0.85);
+    setTimeout(() => {
+      btn.style.background = st.dim;
+      btn.style.filter = '';
+      setTimeout(res, dur * 0.25);
+    }, dur * 0.75);
+  });
+}
+
+// Returns the screen center of a board position slot
+function getPosCenter(posIdx) {
+  const btn = posBtns[posIdx];
+  const r = btn.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+// Animate a circular tile flying from (x0,y0) to (x1,y1), scaling up then down
+// Returns a promise that resolves when done
+function flyTile(color, x0, y0, x1, y1, duration) {
+  return new Promise(res => {
+    const st = COLOR_STYLES[color];
+    const SIZE_NORMAL = 44;
+    const SIZE_BIG = 80;
+
+    const tile = document.createElement('div');
+    tile.className = 'shuffle-tile';
+    tile.style.background = st.bright;
+    tile.style.boxShadow = `0 0 16px ${st.glow}, 0 0 32px ${st.glow}`;
+    tile.style.width  = SIZE_NORMAL + 'px';
+    tile.style.height = SIZE_NORMAL + 'px';
+    tile.style.left   = (x0 - SIZE_NORMAL / 2) + 'px';
+    tile.style.top    = (y0 - SIZE_NORMAL / 2) + 'px';
+    document.body.appendChild(tile);
+
+    const start = performance.now();
+    function frame(now) {
+      const t = Math.min((now - start) / duration, 1);
+      // ease in-out cubic
+      const e = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+      // size: grows to SIZE_BIG at midpoint, back to SIZE_NORMAL at end
+      const sizeCurve = Math.sin(Math.PI * t); // 0→1→0
+      const size = SIZE_NORMAL + (SIZE_BIG - SIZE_NORMAL) * sizeCurve;
+      const cx = x0 + (x1 - x0) * e;
+      const cy = y0 + (y1 - y0) * e;
+      tile.style.width  = size + 'px';
+      tile.style.height = size + 'px';
+      tile.style.left   = (cx - size / 2) + 'px';
+      tile.style.top    = (cy - size / 2) + 'px';
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        tile.remove();
+        res();
+      }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+// Shuffle: rearrange colorAtPos, animate tiles flying to new positions
+function shuffleColors() {
+  const oldOrder = [...colorAtPos];
+
+  // compute new order (guaranteed at least one swap)
+  let attempts = 0;
+  do {
+    for (let i = colorAtPos.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [colorAtPos[i], colorAtPos[j]] = [colorAtPos[j], colorAtPos[i]];
+    }
+    attempts++;
+  } while (attempts < 10 && colorAtPos.every((c, i) => c === oldOrder[i]));
+
+  // For each color that actually moved, grab its start/end centers and fly a tile
+  const DURATION = 480;
+  const promises = [];
+  oldOrder.forEach((color, oldPos) => {
+    const newPos = colorAtPos.indexOf(color);
+    if (newPos === oldPos) return; // didn't move, no animation needed
+    const from = getPosCenter(oldPos);
+    const to   = getPosCenter(newPos);
+    promises.push(flyTile(color, from.x, from.y, to.x, to.y, DURATION));
+  });
+
+  // Hide the underlying buttons while tiles fly, reveal with new colors after
+  posBtns.forEach(b => { b.style.opacity = '0'; });
+  Promise.all(promises).then(() => {
+    applyColors();
+    posBtns.forEach(b => { b.style.opacity = '1'; });
+  });
+}
+
 // ═══════════════ STATE ═══════════════
 let profile = null;
 let sequence = [], playerIdx = 0, round = 0;
 let playerTurn = false, busy = false, speed = 600;
-const COLORS = ['green', 'red', 'blue', 'yellow'];
-const TONES = { green: 415, red: 310, yellow: 252, blue: 209 };
+let gameActive = false;
 
 // ═══════════════ AUDIO ═══════════════
 let _ctx;
@@ -236,22 +392,26 @@ function tone(freq, ms = 300, type = 'sine') {
     g.gain.setValueAtTime(0.35, c.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + ms / 1000);
     o.start(c.currentTime); o.stop(c.currentTime + ms / 1000);
-  } catch (e) {}
+  } catch(e) {}
 }
-function winSound() { [252, 310, 415, 523, 415, 523, 659].forEach((n, i) => setTimeout(() => tone(n, 200), i * 180)); }
-function qteSuccessSound() { [523, 659, 784].forEach((n, i) => setTimeout(() => tone(n, 120), i * 80)); }
-function qteFailSound() { tone(130, 500, 'sawtooth'); }
+function winSound() { [252,310,415,523,415,523,659].forEach((n,i) => setTimeout(() => tone(n,200), i*180)); }
+function qteSuccessSound() { [523,659,784].forEach((n,i) => setTimeout(() => tone(n,120), i*80)); }
+function qteFailSound() { tone(130,500,'sawtooth'); }
+function shuffleSound() {
+  // descending glitchy tones
+  [440,370,311,262].forEach((n,i) => setTimeout(() => tone(n,80,'square'), i*55));
+}
 
 // ═══════════════ UTILS ═══════════════
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const $ = id => document.getElementById(id);
 
 // ═══════════════ QTE SYSTEM ═══════════════
-let qteActive = false;
 let qteShrinkRaf = null;
 let qteScheduleTimer = null;
 let qteInProgress = false;
+let qteType = null; // 'orange' | 'blue'
 
 const QTE_SIZE = 54;
 const QTE_RING_START = 2.8;
@@ -261,24 +421,23 @@ const QTE_URGENT_THRESHOLD = 0.35;
 
 function scheduleQTE() {
   if (qteScheduleTimer) clearTimeout(qteScheduleTimer);
-  if (!playerTurn || !profile) return;
-  // QTEs start appearing after round 3, frequency scales with round count
-  if (sequence.length < 3) return;
-  const chance = Math.min(0.72, (sequence.length - 2) * 0.08);
+  if (!gameActive || !profile) return;
+  if (sequence.length < 1) return;
+  const chance = Math.min(0.85, (sequence.length + 15) * 0.09 + 0.2);
   if (Math.random() > chance) return;
-  const delay = 1200 + Math.random() * 2000;
+  const delay = 800 + Math.random() * 2200;
   qteScheduleTimer = setTimeout(() => {
-    if (playerTurn && !qteInProgress) launchQTE();
+    if (gameActive && !qteInProgress) launchQTE();
   }, delay);
 }
 
 function launchQTE() {
-  if (qteInProgress || !playerTurn) return;
+  if (qteInProgress) return;
   qteInProgress = true;
-  qteActive = true;
+  // Blue (avoid) QTE only fires during the player's input phase
+  qteType = (Math.random() < 0.5 && playerTurn) ? 'blue' : 'orange';
 
   const layer = $('qte-layer');
-  layer.classList.add('active');
   layer.innerHTML = '';
 
   const margin = 80;
@@ -291,15 +450,25 @@ function launchQTE() {
   wrap.style.top = y + 'px';
 
   const inner = document.createElement('div');
-  inner.className = 'qte-inner';
+  const ring = document.createElement('div');
+
+  if (qteType === 'orange') {
+    inner.className = 'qte-inner';
+    ring.className = 'qte-ring';
+    setStatus('⚠ CLICK THE CIRCLE!', 'qte-alert');
+  } else {
+    inner.className = 'qte-inner-blue';
+    inner.innerHTML = '<span class="qte-avoid-label"></span>';
+    ring.className = 'qte-ring-blue';
+    setStatus('✕ DO NOT CLICK!', 'qte-blue');
+  }
+
   inner.style.width = QTE_SIZE + 'px';
   inner.style.height = QTE_SIZE + 'px';
   inner.style.marginLeft = (-QTE_SIZE / 2) + 'px';
   inner.style.marginTop = (-QTE_SIZE / 2) + 'px';
   inner.style.position = 'relative';
 
-  const ring = document.createElement('div');
-  ring.className = 'qte-ring';
   const initialRingSize = QTE_SIZE * QTE_RING_START;
   ring.style.width = initialRingSize + 'px';
   ring.style.height = initialRingSize + 'px';
@@ -311,7 +480,6 @@ function launchQTE() {
   layer.appendChild(wrap);
 
   const start = performance.now();
-
   function animate(now) {
     const elapsed = now - start;
     const t = Math.min(elapsed / QTE_DURATION_MS, 1);
@@ -322,7 +490,9 @@ function launchQTE() {
     ring.style.left = (-(ringSize - QTE_SIZE) / 2) + 'px';
     ring.style.top = (-(ringSize - QTE_SIZE) / 2) + 'px';
     ring.style.opacity = String(0.4 + 0.6 * (1 - t));
-    if (t >= (1 - QTE_URGENT_THRESHOLD)) wrap.classList.add('urgent');
+    if (t >= (1 - QTE_URGENT_THRESHOLD)) {
+      wrap.classList.add(qteType === 'orange' ? 'urgent' : 'urgent-blue');
+    }
     if (t < 1) {
       qteShrinkRaf = requestAnimationFrame(animate);
     } else {
@@ -331,41 +501,71 @@ function launchQTE() {
   }
   qteShrinkRaf = requestAnimationFrame(animate);
 
-  setStatus('⚠ CLICK THE CIRCLE!', 'qte-alert');
-
+  // Click handler — behaviour depends on type
   wrap.addEventListener('mousedown', e => {
     e.stopPropagation();
     if (!qteInProgress) return;
-    hitQTE(inner, ring, wrap);
+    if (qteType === 'orange') {
+      hitOrangeQTE(inner, ring, wrap);
+    } else {
+      hitBlueQTE(inner, ring, wrap);
+    }
   });
 }
 
-function hitQTE(inner, ring, wrap) {
+function resolveQTE(layer) {
+  qteInProgress = false;
+  qteType = null;
+  setTimeout(() => { layer.innerHTML = ''; }, 350);
+  restoreStatus();
+  setTimeout(() => { if (gameActive) scheduleQTE(); }, 600);
+}
+
+function hitOrangeQTE(inner, ring, wrap) {
   if (!qteInProgress) return;
   cancelAnimationFrame(qteShrinkRaf);
-  qteInProgress = false;
-  qteActive = false;
   inner.classList.add('hit');
   ring.style.display = 'none';
   wrap.classList.remove('urgent');
   qteSuccessSound();
-  const layer = $('qte-layer');
-  layer.classList.remove('active');
-  setTimeout(() => { layer.innerHTML = ''; }, 300);
-  if (playerTurn) setStatus('your turn!', 'your-turn');
-  setTimeout(() => { if (playerTurn) scheduleQTE(); }, 600);
+  resolveQTE($('qte-layer'));
+}
+
+function hitBlueQTE(inner, ring, wrap) {
+  // Penalty: shuffle the board colors
+  if (!qteInProgress) return;
+  cancelAnimationFrame(qteShrinkRaf);
+  inner.classList.add('bad-hit');
+  ring.style.display = 'none';
+  wrap.classList.remove('urgent-blue');
+  shuffleSound();
+  $('flash-blue').classList.add('show');
+  setTimeout(() => $('flash-blue').classList.remove('show'), 250);
+  shuffleColors();
+  resolveQTE($('qte-layer'));
 }
 
 function qteExpired() {
   if (!qteInProgress) return;
   cancelAnimationFrame(qteShrinkRaf);
+  const wasBlue = qteType === 'blue';
   qteInProgress = false;
-  qteActive = false;
+  qteType = null;
   const layer = $('qte-layer');
-  layer.classList.remove('active');
   layer.innerHTML = '';
-  if (!playerTurn) return;
+
+  if (wasBlue) {
+    // Blue QTE expired without clicking — good! Just continue.
+    if (!gameActive) return;
+    restoreStatus();
+    setTimeout(() => { if (gameActive) scheduleQTE(); }, 600);
+    return;
+  }
+
+  // Orange QTE expired — game over (even if briefly between rounds)
+  gameActive = false;
   playerTurn = false;
+  busy = false;
   $('flash-orange').classList.add('show');
   setTimeout(() => $('flash-orange').classList.remove('show'), 300);
   qteFailSound();
@@ -378,21 +578,25 @@ function clearQTE() {
   cancelAnimationFrame(qteShrinkRaf);
   clearTimeout(qteScheduleTimer);
   qteInProgress = false;
-  qteActive = false;
+  qteType = null;
   const layer = $('qte-layer');
-  layer.classList.remove('active');
   layer.innerHTML = '';
 }
 
+// Like clearQTE but leaves an in-progress orange QTE alive.
+// Used when a round ends cleanly so the orange keeps ticking into the next phase.
+function clearQTEKeepOrange() {
+  clearTimeout(qteScheduleTimer);
+  if (qteInProgress && qteType === 'orange') return; // leave it running
+  cancelAnimationFrame(qteShrinkRaf);
+  qteInProgress = false;
+  qteType = null;
+  $('qte-layer').innerHTML = '';
+}
+
 // ═══════════════ PROFILE MODAL ═══════════════
-function openProfileModal() {
-  renderProfiles();
-  $('profileOverlay').classList.remove('hidden');
-}
-function closeProfileModal() {
-  if (!profile) return;
-  $('profileOverlay').classList.add('hidden');
-}
+function openProfileModal() { renderProfiles(); $('profileOverlay').classList.remove('hidden'); }
+function closeProfileModal() { if (!profile) return; $('profileOverlay').classList.add('hidden'); }
 
 function renderProfiles() {
   const profiles = load();
@@ -461,33 +665,20 @@ function delProfile(name) {
 $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') createProfile(); });
 
 // ═══════════════ LEADERBOARD ═══════════════
-function openLeaderboard() {
-  $('profileOverlay').classList.add('hidden');
-  renderLb();
-  $('lbOverlay').classList.remove('hidden');
-}
-function closeLb() {
-  $('lbOverlay').classList.add('hidden');
-  if (!profile) openProfileModal();
-}
+function openLeaderboard() { $('profileOverlay').classList.add('hidden'); renderLb(); $('lbOverlay').classList.remove('hidden'); }
+function closeLb() { $('lbOverlay').classList.add('hidden'); if (!profile) openProfileModal(); }
 
 function renderLb() {
-  const profiles = load();
-  const lb = $('lbList');
-  lb.innerHTML = '';
-  const sorted = Object.entries(profiles)
-    .map(([n, d]) => ({ n, b: d.best }))
-    .filter(x => x.b > 0)
-    .sort((a, b) => b.b - a.b);
+  const profiles = load(); const lb = $('lbList'); lb.innerHTML = '';
+  const sorted = Object.entries(profiles).map(([n,d]) => ({n,b:d.best})).filter(x => x.b > 0).sort((a,b) => b.b - a.b);
   if (!sorted.length) { lb.innerHTML = '<div class="lb-empty">no scores recorded yet</div>'; return; }
-  const rankCls = ['gold', 'silver', 'bronze'];
-  const rankLbl = ['#1', '#2', '#3'];
-  sorted.forEach(({ n, b }, i) => {
+  const rankCls = ['gold','silver','bronze']; const rankLbl = ['#1','#2','#3'];
+  sorted.forEach(({n,b},i) => {
     const row = document.createElement('div');
-    row.className = 'lb-row' + (i === 0 ? ' lb-top' : '') + (n === profile ? ' lb-me' : '');
+    row.className = 'lb-row' + (i===0?' lb-top':'') + (n===profile?' lb-me':'');
     row.innerHTML =
-      `<div class="lb-rank ${i < 3 ? rankCls[i] : ''}">${i < 3 ? rankLbl[i] : '#' + (i + 1)}</div>` +
-      `<div class="lb-name">${esc(n)}${n === profile ? ' ◀' : ''}</div>` +
+      `<div class="lb-rank ${i<3?rankCls[i]:''}">${i<3?rankLbl[i]:'#'+(i+1)}</div>` +
+      `<div class="lb-name">${esc(n)}${n===profile?' ◀':''}</div>` +
       `<div class="lb-score">${b}</div>`;
     lb.appendChild(row);
   });
@@ -495,18 +686,20 @@ function renderLb() {
 
 function clearAll() {
   if (!confirm('Delete all profiles and scores?')) return;
-  sessionStorage.removeItem(SK);
-  profile = null;
-  $('badgeName').textContent = '—';
-  $('best').textContent = '0';
-  $('start-btn').disabled = true;
-  setStatus('select a profile to play', '');
-  closeLb();
-  openProfileModal();
+  sessionStorage.removeItem(SK); profile = null;
+  $('badgeName').textContent = '—'; $('best').textContent = '0';
+  $('start-btn').disabled = true; setStatus('select a profile to play', '');
+  closeLb(); openProfileModal();
 }
 
 // ═══════════════ GAME ═══════════════
-function setStatus(msg, cls = '') { const s = $('status'); s.textContent = msg; s.className = 'status ' + cls; }
+function setStatus(msg, cls='') { const s=$('status'); s.textContent=msg; s.className='status '+cls; }
+
+function restoreStatus() {
+  if (!gameActive) return;
+  if (playerTurn) setStatus('your turn!','your-turn');
+  else setStatus('watch carefully...','watching');
+}
 
 function updateRound(n) {
   round = n; $('round').textContent = n; $('center-round').textContent = n || '—';
@@ -514,24 +707,20 @@ function updateRound(n) {
   setTimeout(() => $('round').classList.remove('bump'), 250);
 }
 
-function flashBtn(color, dur) {
-  return new Promise(res => {
-    const el = $(color);
-    el.classList.add('active');
-    tone(TONES[color], dur * 0.85);
-    setTimeout(() => { el.classList.remove('active'); setTimeout(res, dur * 0.25); }, dur * 0.75);
-  });
-}
-
 async function playSequence() {
   playerTurn = false; busy = true;
-  clearQTE();
-  setStatus('watch carefully...', 'watching');
+  setStatus('watch carefully...','watching');
   setBtns(false);
   await sleep(500);
-  for (const c of sequence) await flashBtn(c, speed);
+  scheduleQTE();
+  for (const c of sequence) {
+    if (!gameActive) return;
+    const pos = posOfColor(c);
+    await activatePos(pos, speed);
+  }
+  if (!gameActive) return;
   playerIdx = 0; playerTurn = true; busy = false;
-  setStatus('your turn!', 'your-turn');
+  setStatus('your turn!','your-turn');
   setBtns(true);
   scheduleQTE();
 }
@@ -539,15 +728,20 @@ async function playSequence() {
 function startGame() {
   if (!profile) return;
   clearQTE();
-  sequence = []; playerIdx = 0; playerTurn = false;
+  gameActive = false;
+  // Reset color layout on new game
+  colorAtPos = ['green','red','blue','yellow'];
+  applyColors();
+  sequence = []; playerIdx = 0; playerTurn = false; busy = false;
   updateRound(0);
   $('start-btn').textContent = 'RESTART';
-  setStatus('get ready...', '');
+  setStatus('get ready...','');
   setTimeout(nextRound, 600);
 }
 
 function nextRound() {
-  clearQTE();
+  clearQTEKeepOrange();
+  gameActive = true;
   playerIdx = 0;
   sequence.push(COLORS[Math.floor(Math.random() * 4)]);
   updateRound(sequence.length);
@@ -560,33 +754,37 @@ function nextRound() {
   playSequence();
 }
 
-function handlePress(color) {
+// Called when a position button is pressed (mouse or keyboard)
+function handlePosPress(posIdx) {
   if (!playerTurn || busy || !profile) return;
   ac();
-  flashBtn(color, 200);
-  if (color !== sequence[playerIdx]) {
-    playerTurn = false;
+  const c = colorAtPos[posIdx];
+  // Flash the pressed position
+  activatePos(posIdx, 200);
+  // Check against expected color in sequence
+  if (c !== sequence[playerIdx]) {
+    playerTurn = false; gameActive = false;
     clearQTE();
     $('flash').classList.add('show');
     setTimeout(() => $('flash').classList.remove('show'), 200);
     tone(130, 600, 'sawtooth');
-    setStatus('wrong! restarting...', 'fail');
+    setStatus('wrong! restarting...','fail');
     setBtns(false);
     setTimeout(() => startGame(), 1400);
     return;
   }
   playerIdx++;
   if (playerIdx === sequence.length) {
-    playerTurn = false;
-    clearQTE();
+    playerTurn = false; gameActive = false;
+    clearQTEKeepOrange();
     setBtns(false);
-    setStatus('nice!', 'win');
+    setStatus('nice!','win');
     setTimeout(nextRound, 1000);
   }
 }
 
 function setBtns(on) {
-  COLORS.forEach(c => { const e = $(c); e.disabled = !on; e.style.cursor = on ? 'pointer' : 'default'; });
+  posBtns.forEach(b => { b.disabled = !on; b.style.cursor = on ? 'pointer' : 'default'; });
 }
 
 function setSpeed(btn, val) {
@@ -600,20 +798,15 @@ function showToast(msg) {
   t.classList.remove('show'); void t.offsetWidth; t.classList.add('show');
 }
 
-// ═══════════════ EVENTS ═══════════════
-COLORS.forEach(c => {
-  const el = $(c);
-  el.addEventListener('mousedown', () => handlePress(c));
-  el.addEventListener('touchstart', e => { e.preventDefault(); handlePress(c); }, { passive: false });
-});
-
+// ═══════════════ KEYBOARD ═══════════════
 document.addEventListener('keydown', e => {
-  const map = { w: 'green', e: 'red', s: 'blue', d: 'yellow' };
   if (e.key === ' ') { e.preventDefault(); if (!$('start-btn').disabled) startGame(); return; }
-  if (map[e.key.toLowerCase()]) handlePress(map[e.key.toLowerCase()]);
+  const pos = KEY_TO_POS[e.key.toLowerCase()];
+  if (pos !== undefined) handlePosPress(pos);
 });
 
 // ═══════════════ INIT ═══════════════
+buildBoard();
 setBtns(false);
 openProfileModal();
 </script>
