@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
+import type { KeyboardEvent, MouseEvent } from 'react';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { Github, Play, GitBranch, ImageOff, ExternalLink, Lock } from 'lucide-react';
 import type { Game } from '../types/game';
-import { isExternalUrl, pfpPath } from '../types/game';
+import { pfpPath } from '../types/game';
 
 type Props = {
   game: Game;
@@ -34,10 +34,15 @@ function hashHue(s: string) {
   return Math.abs(h) % 360;
 }
 
+/** Opens the game URL in a new tab with safe rel attributes. */
+function openGame(url: string) {
+  // Same call for local and external URLs — both must open in a new tab.
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 export default function GameCard({ game, index }: Props) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [imgFailed, setImgFailed] = useState(false);
-  const [pfpFailed, setPfpFailed] = useState(false);
   const [pos, setPos] = useState({ x: 50, y: 50 });
 
   const rx = useMotionValue(0);
@@ -49,8 +54,7 @@ export default function GameCard({ game, index }: Props) {
 
   const hasGithub = game.creatorGithub.trim().length > 0;
   const githubUrl = hasGithub ? `https://github.com/${game.creatorGithub}` : undefined;
-  const isPlayable = game.playUrl && game.playUrl !== '#';
-  const external = isPlayable && isExternalUrl(game.playUrl);
+  const isPlayable = !!(game.playUrl && game.playUrl !== '#');
 
   const onMove = (e: MouseEvent<HTMLDivElement>) => {
     const el = cardRef.current;
@@ -67,11 +71,27 @@ export default function GameCard({ game, index }: Props) {
     ry.set(0);
   };
 
-  const pfp = game.pfp ?? pfpPath(game.creator);
+  const onCardClick = () => {
+    if (isPlayable) openGame(game.playUrl);
+  };
+  const onCardKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!isPlayable) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openGame(game.playUrl);
+    }
+  };
+
+  const stop = (e: MouseEvent) => e.stopPropagation();
 
   return (
-    <motion.article
+    <motion.div
       ref={cardRef}
+      role={isPlayable ? 'link' : undefined}
+      tabIndex={isPlayable ? 0 : -1}
+      aria-label={isPlayable ? `Play ${game.name}` : `${game.name} (coming soon)`}
+      onClick={onCardClick}
+      onKeyDown={onCardKey}
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
@@ -79,64 +99,74 @@ export default function GameCard({ game, index }: Props) {
       onMouseMove={onMove}
       onMouseLeave={onLeave}
       style={{ rotateX, rotateY, transformPerspective: 1000 }}
-      className="group relative overflow-hidden rounded-xl border border-hairline bg-surface-1
+      className={`group relative overflow-hidden rounded-xl border border-hairline bg-surface-1
         transition-[border-color,box-shadow,transform] duration-300
         hover:border-hairline-strong hover:shadow-[0_20px_50px_-22px_rgba(124,140,255,0.55)]
-        will-change-transform aspect-[4/5] flex"
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas-deep
+        will-change-transform flex flex-col ${isPlayable ? 'cursor-pointer' : 'cursor-default'}`}
     >
-      {/* Background screenshot */}
-      <div className="absolute inset-0">
+      {/* Shine sweep */}
+      <div
+        className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-[1100ms] ease-out z-20"
+        style={{ background: 'linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.06) 50%, transparent 70%)' }}
+      />
+
+      {/* === 16:9 Thumbnail === */}
+      <div className="relative w-full aspect-video overflow-hidden border-b border-hairline bg-canvas-deep">
         {!imgFailed && game.screenshot ? (
           <img
             src={game.screenshot}
             alt={`${game.name} screenshot`}
             loading="lazy"
             onError={() => setImgFailed(true)}
-            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.07]"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.06]"
           />
         ) : (
           <ScreenshotFallback name={game.creator} />
         )}
+
+        {/* subtle gradient on thumb */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-canvas-deep/70 via-canvas-deep/15 to-transparent" />
+
+        {/* Cursor spotlight only on thumb */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+          style={{
+            background: `radial-gradient(280px circle at ${pos.x}% ${pos.y}%, rgba(124,140,255,0.20), transparent 55%)`,
+          }}
+        />
+
+        {/* Top badges */}
+        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-start justify-between gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium backdrop-blur-md ${statusColor(
+              game.status
+            )}`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse-soft" />
+            {game.status}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-canvas-deep/70 backdrop-blur border border-hairline px-2 py-0.5 text-[10px] font-mono text-ink-muted">
+            <GitBranch className="h-2.5 w-2.5" />
+            {game.branch}
+          </span>
+        </div>
+
+        {/* Floating play CTA on hover */}
+        {isPlayable && (
+          <div className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <div className="h-14 w-14 rounded-full bg-accent text-canvas-deep grid place-items-center shadow-[0_12px_36px_-8px_rgba(124,140,255,0.85)] ring-2 ring-white/20">
+              <Play className="h-6 w-6 fill-current translate-x-0.5" />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Gradient overlays */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-canvas-deep via-canvas-deep/40 to-transparent" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-canvas-deep/40 via-transparent to-transparent" />
-
-      {/* Cursor spotlight */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{
-          background: `radial-gradient(360px circle at ${pos.x}% ${pos.y}%, rgba(124,140,255,0.18), transparent 55%)`,
-        }}
-      />
-
-      {/* Shine sweep */}
-      <div
-        className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-[1100ms] ease-out"
-        style={{ background: 'linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.07) 50%, transparent 70%)' }}
-      />
-
-      {/* Top badges */}
-      <div className="absolute top-2.5 left-2.5 right-2.5 flex items-start justify-between gap-2 z-10">
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium backdrop-blur-md ${statusColor(
-            game.status
-          )}`}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse-soft" />
-          {game.status}
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-canvas-deep/70 backdrop-blur border border-hairline px-2 py-0.5 text-[10px] font-mono text-ink-muted">
-          <GitBranch className="h-2.5 w-2.5" />
-          {game.branch}
-        </span>
-      </div>
-
-      {/* Bottom content — slim default, hover-reveal extras */}
-      <div className="relative mt-auto w-full p-3.5 sm:p-4 z-10">
-        <div className="flex items-center gap-2.5">
-          <Avatar name={game.creator} pfp={pfp} failed={pfpFailed} onFail={() => setPfpFailed(true)} />
+      {/* === Content === */}
+      <div className="relative p-3.5 sm:p-4 flex flex-col gap-3">
+        {/* Title row */}
+        <div className="flex items-center gap-3">
+          <CreatorAvatar game={game} />
           <div className="min-w-0 flex-1">
             <h3 className="text-[15px] sm:text-base font-semibold tracking-tight text-ink truncate">
               {game.name}
@@ -149,18 +179,14 @@ export default function GameCard({ game, index }: Props) {
             </div>
           </div>
           {isPlayable ? (
-            <a
-              href={game.playUrl}
-              target={external ? '_blank' : '_self'}
-              rel={external ? 'noopener noreferrer' : undefined}
-              onClick={(e) => e.stopPropagation()}
-              className="shrink-0 h-9 w-9 rounded-full bg-accent/90 hover:bg-accent grid place-items-center text-canvas-deep
-                shadow-[0_8px_24px_-8px_rgba(124,140,255,0.85)] transition-transform hover:scale-105"
-              aria-label={`Play ${game.name}`}
-              title={external ? 'Open externally' : 'Play'}
+            <span
+              aria-hidden
+              className="shrink-0 h-9 w-9 rounded-full bg-accent/90 group-hover:bg-accent grid place-items-center text-canvas-deep
+                shadow-[0_8px_24px_-8px_rgba(124,140,255,0.85)] transition-transform group-hover:scale-105"
+              title="Play"
             >
-              <Play className="h-4 w-4 fill-current" />
-            </a>
+              <Play className="h-4 w-4 fill-current translate-x-[1px]" />
+            </span>
           ) : (
             <span
               className="shrink-0 h-9 w-9 rounded-full bg-surface-2/80 border border-hairline grid place-items-center text-ink-tertiary"
@@ -178,7 +204,7 @@ export default function GameCard({ game, index }: Props) {
             transition-[grid-template-rows] duration-300 ease-out"
         >
           <div className="overflow-hidden">
-            <div className="pt-3 mt-3 border-t border-hairline/70 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300">
+            <div className="pt-3 border-t border-hairline/70 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300">
               <p className="text-[12.5px] leading-relaxed text-ink-subtle line-clamp-3">
                 {game.description}
               </p>
@@ -202,6 +228,8 @@ export default function GameCard({ game, index }: Props) {
                     href={githubUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={stop}
+                    onKeyDown={(e) => e.stopPropagation()}
                     className="inline-flex items-center gap-1.5 rounded-md bg-surface-2/80 border border-hairline px-2.5 py-1.5 text-[11px] text-ink-muted hover:text-ink hover:border-hairline-strong transition-colors"
                     title={`@${game.creatorGithub}`}
                   >
@@ -209,57 +237,95 @@ export default function GameCard({ game, index }: Props) {
                     <span className="font-mono">@{game.creatorGithub}</span>
                   </a>
                 )}
-                {isPlayable && (
+                {game.coCreators?.map((cc) => (
                   <a
-                    href={game.playUrl}
-                    target={external ? '_blank' : '_self'}
-                    rel={external ? 'noopener noreferrer' : undefined}
-                    className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-accent/90 hover:bg-accent text-canvas-deep px-2.5 py-1.5 text-[11px] font-semibold transition-colors"
+                    key={cc.github}
+                    href={`https://github.com/${cc.github}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={stop}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-surface-2/80 border border-hairline px-2.5 py-1.5 text-[11px] text-ink-muted hover:text-ink hover:border-hairline-strong transition-colors"
+                    title={`@${cc.github}`}
+                  >
+                    <Github className="h-3.5 w-3.5" />
+                    <span className="font-mono">@{cc.github}</span>
+                  </a>
+                ))}
+                {isPlayable && (
+                  <span
+                    aria-hidden
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-accent/90 group-hover:bg-accent text-canvas-deep px-2.5 py-1.5 text-[11px] font-semibold transition-colors"
                   >
                     <Play className="h-3.5 w-3.5 fill-current" />
                     Play
-                    {external && <ExternalLink className="h-3 w-3 opacity-70" />}
-                  </a>
+                    <ExternalLink className="h-3 w-3 opacity-70" />
+                  </span>
                 )}
               </div>
             </div>
           </div>
         </div>
       </div>
-    </motion.article>
+    </motion.div>
   );
 }
 
-function Avatar({
-  name,
-  pfp,
-  failed,
-  onFail,
-}: {
-  name: string;
-  pfp: string;
-  failed: boolean;
-  onFail: () => void;
-}) {
+/** Single avatar — or overlapping stack when there are co-creators. */
+function CreatorAvatar({ game }: { game: Game }) {
+  const all = [
+    { name: game.creator, github: game.creatorGithub },
+    ...(game.coCreators ?? []),
+  ];
+
+  if (all.length === 1) {
+    return <PfpImage name={all[0].name} size={44} />;
+  }
+
+  // Stacked: overlapping with ring so the overlap looks intentional.
+  return (
+    <div className="flex shrink-0 -space-x-3 group-hover:-space-x-2 transition-[margin] duration-300">
+      {all.map((p, i) => (
+        <div
+          key={p.github || p.name}
+          className="rounded-full ring-2 ring-surface-1 group-hover:ring-accent/40 transition-[box-shadow,ring-color] duration-300 shadow-[0_4px_14px_-6px_rgba(124,140,255,0.7)]"
+          style={{ zIndex: all.length - i }}
+        >
+          <PfpImage name={p.name} size={40} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PfpImage({ name, size }: { name: string; size: number }) {
+  const [failed, setFailed] = useState(false);
   const hue = hashHue(name);
+  const style = { width: size, height: size };
   if (!failed) {
     return (
       <img
-        src={pfp}
+        src={pfpPath(name)}
         alt={name}
-        onError={onFail}
-        className="h-9 w-9 rounded-full object-cover ring-1 ring-white/15 shrink-0 bg-surface-2"
+        onError={() => setFailed(true)}
+        style={style}
+        className="rounded-full object-cover ring-1 ring-white/15 shrink-0 bg-surface-2"
       />
     );
   }
   return (
     <div
-      className="h-9 w-9 rounded-full grid place-items-center text-[11px] font-semibold text-canvas-deep ring-1 ring-white/10 shrink-0"
-      style={{
-        background: `linear-gradient(135deg, hsl(${hue} 80% 70%), hsl(${(hue + 60) % 360} 75% 60%))`,
-      }}
+      style={style}
+      className="rounded-full grid place-items-center text-xs font-semibold text-canvas-deep ring-1 ring-white/10 shrink-0"
     >
-      {initials(name)}
+      <div
+        className="h-full w-full rounded-full grid place-items-center"
+        style={{
+          background: `linear-gradient(135deg, hsl(${hue} 80% 70%), hsl(${(hue + 60) % 360} 75% 60%))`,
+        }}
+      >
+        {initials(name)}
+      </div>
     </div>
   );
 }

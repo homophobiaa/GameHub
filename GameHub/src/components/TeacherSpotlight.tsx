@@ -1,8 +1,6 @@
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Github, GraduationCap, Star } from 'lucide-react';
 import type { TeamMember } from '../types/team';
-import { pfpPath } from '../types/game';
 
 type Props = {
   teacher: TeamMember;
@@ -11,7 +9,6 @@ type Props = {
 
 export default function TeacherSpotlight({ teacher, extras }: Props) {
   const hasExtras = extras.length > 0;
-  const [imgFailed, setImgFailed] = useState(false);
   return (
     <div className={hasExtras ? 'grid lg:grid-cols-3 gap-5' : 'flex flex-col gap-5'}>
       {/* Teacher */}
@@ -35,21 +32,12 @@ export default function TeacherSpotlight({ teacher, extras }: Props) {
         <div className="relative p-7 sm:p-8 flex items-center gap-6">
           <div className="relative shrink-0">
             <div className="absolute -inset-2 rounded-full bg-gradient-to-br from-amber-400/40 to-accent/40 blur-2xl" />
-            <div className="relative h-24 w-24 rounded-full ring-2 ring-amber-300/40 bg-gradient-to-br from-amber-300 via-amber-500 to-accent grid place-items-center text-canvas-deep text-2xl font-bold overflow-hidden">
-              {!imgFailed ? (
-                <img
-                  src={pfpPath(teacher.name)}
-                  alt={teacher.name}
-                  onError={() => setImgFailed(true)}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <GraduationCap className="h-10 w-10" strokeWidth={2.2} />
-              )}
+            <div className="relative h-20 w-20 rounded-full ring-2 ring-white/10 bg-gradient-to-br from-amber-300 via-amber-500 to-accent grid place-items-center text-canvas-deep text-2xl font-bold overflow-hidden">
+              <GraduationCap className="h-9 w-9" strokeWidth={2.2} />
             </div>
-            <div className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-canvas-deep border-2 border-canvas-deep grid place-items-center">
+            <div className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-canvas-deep border-2 border-canvas-deep grid place-items-center">
               <div className="h-full w-full rounded-full bg-gradient-to-br from-amber-300 to-amber-500 grid place-items-center">
-                <Star className="h-3.5 w-3.5 text-canvas-deep" fill="currentColor" />
+                <Star className="h-3 w-3 text-canvas-deep" fill="currentColor" />
               </div>
             </div>
           </div>
