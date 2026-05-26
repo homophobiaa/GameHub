@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🧭 Direction Memory Game | GameHub</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="game">
+    <header class="game__header">
+      <a href="../../index.html" class="back-link" aria-label="Назад към GameHub">← GameHub</a>
+      <h1>🧭 Direction Memory</h1>
+      <p class="tagline">Повтори поредицата от посоки. Всеки рунд добавя нова.</p>
+    </header>
+
+    <section class="hud" aria-label="Статистика">
+      <div class="hud__item">
+        <span class="hud__label">Играч</span>
+        <span id="playerName" class="hud__value">Гост</span>
+      </div>
+      <div class="hud__item">
+        <span class="hud__label">Рунд</span>
+        <span id="round" class="hud__value">0</span>
+      </div>
+      <div class="hud__item">
+        <span class="hud__label">Точки</span>
+        <span id="score" class="hud__value">0</span>
+      </div>
+      <div class="hud__item">
+        <span class="hud__label">Рекорд</span>
+        <span id="best" class="hud__value">0</span>
+      </div>
+    </section>
+
+    <section class="stage" aria-live="polite">
+      <div id="status" class="status">Натисни „Старт“, за да започнеш</div>
+      <div id="sequenceDisplay" class="sequence-display" aria-hidden="true">·</div>
+    </section>
+
+    <section class="pad" aria-label="Контролен пад">
+      <button class="arrow arrow--up"    data-dir="up"    aria-label="Нагоре">↑</button>
+      <button class="arrow arrow--left"  data-dir="left"  aria-label="Наляво">←</button>
+      <button class="arrow arrow--down"  data-dir="down"  aria-label="Надолу">↓</button>
+      <button class="arrow arrow--right" data-dir="right" aria-label="Надясно">→</button>
+    </section>
+
+    <section class="controls">
+      <button id="startBtn" class="btn btn--primary">▶ Старт</button>
+      <button id="resetBtn" class="btn btn--ghost" disabled>↺ Нова игра</button>
+      <p class="hint">Съвет: можеш да играеш и със стрелките на клавиатурата.</p>
+    </section>
+
+    <section class="leaderboard" aria-label="Класация">
+      <h2>🏆 Топ 10</h2>
+      <ol id="leaderboardList" class="leaderboard__list">
+        <li class="leaderboard__empty">Все още няма резултати — бъди първи!</li>
+      </ol>
+    </section>
+  </main>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memory Pattern Challenge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="theme-neon">
+  <main class="app-shell">
+    <section class="top-panel" aria-labelledby="game-title">
+      <div class="title-lockup">
+        <div class="game-mark" aria-hidden="true">
+          <span></span>
+        </div>
+        <div>
+          <p class="eyebrow">Neural Memory Arena</p>
+          <h1 id="game-title">Memory Pattern Challenge</h1>
+          <p class="intro">
+            Запомни светлинния код, повтори го без грешка и дръж серията жива. Всеки успешен рунд добавя нов сигнал.
+          </p>
+          <div class="rule-row" aria-label="Кратки правила">
+            <span>90 секунди</span>
+            <span>4 сигнала</span>
+            <span>Автоматични точки</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-panel" aria-label="Профил на играч">
+        <div class="player-card">
+          <span class="label">Сесия</span>
+          <strong id="player-name">Няма профил</strong>
+        </div>
+        <div class="profile-actions">
+          <button class="ghost-button" id="new-user-button" type="button">Нов потребител</button>
+          <button class="language-toggle" id="language-toggle" type="button" aria-label="Смени на английски">EN</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="game-layout" aria-label="Игрална зона">
+      <aside class="control-panel">
+        <form class="user-form" id="user-form" autocomplete="off">
+          <label for="initials-input">Инициали / прякор</label>
+          <div class="input-row">
+            <input
+              id="initials-input"
+              name="initials"
+              type="text"
+              maxlength="12"
+              placeholder="Напр. АД"
+              aria-describedby="form-hint"
+            >
+            <button type="submit">Създай</button>
+          </div>
+          <p id="form-hint">Без email и парола. Пази се само в този браузър.</p>
+        </form>
+
+        <section class="setup-panel" aria-label="Настройки">
+          <div class="setting-row">
+            <span class="setting-label" id="difficulty-label">Трудност</span>
+            <div class="segmented-control" role="group" aria-labelledby="difficulty-label">
+              <button class="segment-button" type="button" data-difficulty="easy">Easy</button>
+              <button class="segment-button active" type="button" data-difficulty="normal">Normal</button>
+              <button class="segment-button" type="button" data-difficulty="brutal">Brutal</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <span class="setting-label" id="theme-label">Тема</span>
+            <div class="segmented-control theme-control" role="group" aria-labelledby="theme-label">
+              <button class="theme-button active" type="button" data-theme="neon" aria-label="Neon theme"></button>
+              <button class="theme-button" type="button" data-theme="red" aria-label="Cyber Red theme"></button>
+              <button class="theme-button" type="button" data-theme="toxic" aria-label="Toxic Green theme"></button>
+              <button class="theme-button" type="button" data-theme="ice" aria-label="Ice Blue theme"></button>
+            </div>
+          </div>
+
+          <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="true">Звук: Вкл.</button>
+        </section>
+
+        <div class="stats-grid" aria-label="Статистика">
+          <div class="stat-card stat-score">
+            <span>Точки</span>
+            <strong id="score">0</strong>
+          </div>
+          <div class="stat-card stat-round">
+            <span>Рунд</span>
+            <strong id="round">0</strong>
+          </div>
+          <div class="stat-card stat-combo">
+            <span>Комбо</span>
+            <strong id="combo">x1</strong>
+          </div>
+          <div class="stat-card stat-best">
+            <span>Най-добър</span>
+            <strong id="best-score">0</strong>
+          </div>
+          <div class="stat-card stat-timer">
+            <span>Време</span>
+            <strong id="timer">90</strong>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="primary-button" id="start-button" type="button" disabled>Старт</button>
+          <button class="secondary-button" id="reset-button" type="button">Нова игра</button>
+        </div>
+
+        <div class="sequence-meter-wrap" aria-label="Дължина на поредицата">
+          <span>Серия</span>
+          <div class="sequence-meter" id="sequence-meter"></div>
+        </div>
+
+        <p class="status-text" id="status-text" role="status" aria-live="polite">
+          Създай нов потребител, за да започнеш.
+        </p>
+      </aside>
+
+      <section class="board-wrap" aria-label="Цветна последователност">
+        <div class="board-stage" id="board-stage">
+          <svg class="circuit-map" viewBox="0 0 600 600" aria-hidden="true">
+            <path d="M300 22 L300 126 M300 474 L300 578 M22 300 L126 300 M474 300 L578 300" />
+            <path d="M118 118 L196 196 M482 118 L404 196 M118 482 L196 404 M482 482 L404 404" />
+            <path d="M300 126 C396 126 474 204 474 300 C474 396 396 474 300 474 C204 474 126 396 126 300 C126 204 204 126 300 126Z" />
+            <path d="M300 184 C364 184 416 236 416 300 C416 364 364 416 300 416 C236 416 184 364 184 300 C184 236 236 184 300 184Z" />
+          </svg>
+
+          <div class="sequence-board" id="sequence-board">
+            <button class="pad pad-coral" data-color="coral" data-key="q" aria-label="Червен триъгълник">
+              <span class="pad-plate"></span>
+              <span class="pad-symbol symbol-triangle" aria-hidden="true"></span>
+              <span class="keycap">Q</span>
+              <span class="pad-name">CRIMSON</span>
+            </button>
+            <button class="pad pad-mint" data-color="mint" data-key="w" aria-label="Зелен ромб">
+              <span class="pad-plate"></span>
+              <span class="pad-symbol symbol-diamond" aria-hidden="true"></span>
+              <span class="keycap">W</span>
+              <span class="pad-name">VENOM</span>
+            </button>
+            <button class="pad pad-sky" data-color="sky" data-key="a" aria-label="Син кръг">
+              <span class="pad-plate"></span>
+              <span class="pad-symbol symbol-ring" aria-hidden="true"></span>
+              <span class="keycap">A</span>
+              <span class="pad-name">ION</span>
+            </button>
+            <button class="pad pad-gold" data-color="gold" data-key="s" aria-label="Жълт кръст">
+              <span class="pad-plate"></span>
+              <span class="pad-symbol symbol-plus" aria-hidden="true"></span>
+              <span class="keycap">S</span>
+              <span class="pad-name">SOLAR</span>
+            </button>
+          </div>
+
+          <div class="center-core" aria-hidden="true">
+            <span id="core-state">READY</span>
+            <strong id="core-round">00</strong>
+          </div>
+
+          <div class="countdown" id="countdown" hidden>3</div>
+        </div>
+
+        <section class="leaderboard-panel" aria-labelledby="leaderboard-title">
+          <div class="leaderboard-head">
+            <h2 id="leaderboard-title">Топ 5</h2>
+            <button class="mini-button" id="clear-leaderboard-button" type="button">Изчисти</button>
+          </div>
+          <ol class="leaderboard-list" id="leaderboard-list"></ol>
+        </section>
+
+        <section class="achievements-panel" aria-labelledby="achievements-title">
+          <h2 id="achievements-title">Постижения</h2>
+          <div class="achievements-list" id="achievements-list"></div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="result-modal" hidden>
+    <section class="result-dialog" role="dialog" aria-modal="true" aria-labelledby="result-title">
+      <p class="eyebrow">Край на играта</p>
+      <h2 id="result-title">Добра серия!</h2>
+      <div class="rank-badge" id="rank-badge">Rookie</div>
+      <p id="result-message"></p>
+      <div class="result-summary" aria-label="Финална статистика">
+        <div>
+          <span>Точки</span>
+          <strong id="final-score">0</strong>
+        </div>
+        <div>
+          <span>Рунд</span>
+          <strong id="final-round">0</strong>
+        </div>
+        <div>
+          <span>Комбо</span>
+          <strong id="final-combo">x1</strong>
+        </div>
+        <div>
+          <span>Най-добър</span>
+          <strong id="final-best">0</strong>
+        </div>
+      </div>
+      <div class="result-actions">
+        <button class="primary-button" id="play-again-button" type="button">Играй пак</button>
+        <button class="secondary-button" id="result-new-user-button" type="button">Нов потребител</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
