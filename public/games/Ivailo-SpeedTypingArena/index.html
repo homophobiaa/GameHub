@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speed Typing Arena</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="background-glow glow-left"></div>
+  <div class="background-glow glow-right"></div>
+
+  <main class="app-shell">
+    <section id="start-screen" class="screen is-active">
+      <div class="panel hero-panel">
+        <p class="eyebrow">60-Second Typing Challenge</p>
+        <h1>Speed Typing Arena</h1>
+        <p class="hero-copy">
+          Enter the arena, choose your challenge level, and finish the target text before the 60-second limit runs out.
+        </p>
+
+        <div class="info-grid">
+          <article class="mini-card">
+            <span class="mini-card-label">Goal</span>
+            <strong>Type fast, stay accurate, and keep the streak alive.</strong>
+          </article>
+          <article class="mini-card">
+            <span class="mini-card-label">Round</span>
+            <strong>Each match ends when you finish the text or the 60 seconds expire.</strong>
+          </article>
+          <article class="mini-card">
+            <span class="mini-card-label">Scoring</span>
+            <strong>WPM, accuracy, streaks, and mistakes decide your score.</strong>
+          </article>
+        </div>
+
+        <form id="start-form" class="player-form" novalidate>
+          <label for="player-name">Player Name</label>
+          <input
+            id="player-name"
+            name="player-name"
+            type="text"
+            maxlength="20"
+            placeholder="Enter your arena name"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <fieldset class="difficulty-fieldset">
+            <legend>Choose Difficulty</legend>
+            <div class="difficulty-grid">
+              <label class="difficulty-option">
+                <input type="radio" name="difficulty" value="easy">
+                <span class="difficulty-card">
+                  <strong>Easy</strong>
+                  <small>Short and simple words or sentences.</small>
+                </span>
+              </label>
+              <label class="difficulty-option">
+                <input type="radio" name="difficulty" value="normal">
+                <span class="difficulty-card">
+                  <strong>Normal</strong>
+                  <small>Medium-length sentences with balanced pace.</small>
+                </span>
+              </label>
+              <label class="difficulty-option">
+                <input type="radio" name="difficulty" value="hard">
+                <span class="difficulty-card">
+                  <strong>Hard</strong>
+                  <small>Longer text with punctuation, numbers, and code-like lines.</small>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+          <p id="start-error" class="form-error" aria-live="polite"></p>
+
+          <div class="button-row">
+            <button type="submit" class="btn btn-primary">Start Game</button>
+            <button type="button" id="start-leaderboard-btn" class="btn btn-secondary">View Leaderboard</button>
+          </div>
+          <p class="leaderboard-hint">Open the leaderboard to see the top scores for Easy, Normal, and Hard.</p>
+        </form>
+      </div>
+    </section>
+
+    <section id="game-screen" class="screen">
+      <div class="panel game-panel">
+        <div class="panel-top">
+          <div>
+            <p class="eyebrow">Live Match</p>
+            <h2>Keep Typing</h2>
+            <div class="status-row">
+              <span id="game-player-tag" class="status-pill"></span>
+              <span id="game-difficulty-tag" class="status-pill status-pill-accent"></span>
+            </div>
+          </div>
+          <div class="timer-badge">
+            <span class="timer-label">Time Left</span>
+            <span id="timer" class="timer-value">60s</span>
+          </div>
+        </div>
+
+        <div class="quote-box">
+          <p class="quote-label">Target Text</p>
+          <div id="text-display" class="text-display" aria-live="polite"></div>
+        </div>
+
+        <label for="typing-input" class="typing-label">Type here</label>
+        <textarea
+          id="typing-input"
+          class="typing-input"
+          rows="4"
+          placeholder="Start typing the text above..."
+          spellcheck="false"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+        ></textarea>
+        <p class="submit-hint">Want to submit your attempt early? Press Enter to finish and save your result.</p>
+
+        <div class="stats-grid">
+          <article class="stat-card accent">
+            <span class="stat-label">WPM</span>
+            <strong id="wpm">0</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Accuracy</span>
+            <strong id="accuracy">100%</strong>
+          </article>
+          <article class="stat-card danger">
+            <span class="stat-label">Mistakes</span>
+            <strong id="mistakes">0</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Current Streak</span>
+            <strong id="streak">0</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Best Streak</span>
+            <strong id="best-streak">0</strong>
+          </article>
+          <article class="stat-card score-card">
+            <span class="stat-label">Score Preview</span>
+            <strong id="score-preview">0</strong>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="result-screen" class="screen">
+      <div class="panel result-panel">
+        <p class="eyebrow">Match Complete</p>
+        <h2>Final Results</h2>
+        <p id="result-player" class="result-player"></p>
+        <p id="result-difficulty" class="result-difficulty"></p>
+
+        <div class="result-highlight">
+          <span>Final Score</span>
+          <strong id="result-score">0</strong>
+        </div>
+
+        <div class="stats-grid result-grid">
+          <article class="stat-card accent">
+            <span class="stat-label">WPM</span>
+            <strong id="result-wpm">0</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Accuracy</span>
+            <strong id="result-accuracy">0%</strong>
+          </article>
+          <article class="stat-card danger">
+            <span class="stat-label">Mistakes</span>
+            <strong id="result-mistakes">0</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Best Streak</span>
+            <strong id="result-best-streak">0</strong>
+          </article>
+        </div>
+
+        <div class="button-row">
+          <button type="button" id="play-again-btn" class="btn btn-primary">Play Again</button>
+          <button type="button" id="result-leaderboard-btn" class="btn btn-secondary">Leaderboard</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="leaderboard-screen" class="screen">
+      <div class="panel leaderboard-panel">
+        <div class="panel-top">
+          <div>
+            <p class="eyebrow">Hall Of Fame</p>
+            <h2>Top 10 Leaderboard</h2>
+          </div>
+          <span id="leaderboard-note" class="leaderboard-note">Stored locally on this device</span>
+        </div>
+
+        <div class="difficulty-switch" role="tablist" aria-label="Leaderboard difficulty">
+          <button type="button" class="switch-btn" data-board-difficulty="easy">Easy</button>
+          <button type="button" class="switch-btn" data-board-difficulty="normal">Normal</button>
+          <button type="button" class="switch-btn" data-board-difficulty="hard">Hard</button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Name</th>
+                <th>Score</th>
+                <th>WPM</th>
+                <th>Accuracy</th>
+                <th>Mistakes</th>
+                <th>Best Streak</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+          </table>
+          <p id="leaderboard-empty" class="leaderboard-empty">No results yet. Finish a match to claim a spot.</p>
+        </div>
+
+        <div class="button-row">
+          <button type="button" id="leaderboard-back-btn" class="btn btn-secondary">Back</button>
+          <button type="button" id="clear-leaderboard-btn" class="btn btn-danger">Clear Leaderboard</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
