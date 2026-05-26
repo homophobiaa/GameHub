@@ -6,18 +6,19 @@
 2.  **Start the Game**: Click **START** or press **Space**.
 3.  **Watch the Sequence**: The game will flash a series of colored buttons in a specific order.
 4.  **Repeat the Sequence**: Click the buttons in the exact same order.
-5.  **Advance**: Every successful round adds one more color to the sequence.
-6.  **Game Over**: If you press the wrong button, the game resets. Try to beat your "Best" score!
+5.  **Quick time Events**: Orange and Blue cirles will appear randomly. Don't miss the ORANGE circle and avoid the BLUE.
+6.  **Advance**: Every successful round adds one more color to the sequence.
+7.  **Game Over**: If you press the wrong button, the game resets. Try to beat your "Best" score!
 
 ## ⌨️ Keyboard Controls
 
 | Key | Action |
 | :--- | :--- |
 | **Space** | Start / Restart Game |
-| **W** | Green Button |
-| **E** | Red Button |
-| **S** | Blue Button |
-| **D** | Yellow Button |
+| **W** | Top-Lest Button |
+| **E** | Top-Right Button |
+| **S** | Bottom-Left Button |
+| **D** | Bottom-Right Button |
 
 ## 🚀 Features
 
