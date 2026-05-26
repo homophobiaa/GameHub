@@ -1,56 +1,253 @@
 # SoftUni GameHub
 
-A polished React/Vite/TypeScript/TailwindCSS launcher that showcases every student-made game built for the SoftUni class event.
 
-## Development
+<div align="center">
 
-```bash
-npm install
-npm run dev
+<img src="./public/logo.svg" alt="RiskIndex Logo" width="120"/>
+
+![Status](https://img.shields.io/badge/status-active-success)
+![React](https://img.shields.io/badge/react-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/typescript-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/vite-646CFF?logo=vite&logoColor=white)
+![Frontend Check](https://github.com/homophobiaa/GameHub/actions/workflows/node.js.yml/badge.svg)
+
+A community-driven game showcase platform created for a SoftUni school event.
+
+This project combines multiple student-made games into a single modern platform where visitors can browse, launch, and experience different projects in one place.
+
+<br/>
+
+🌐 **Website:** [gamehubbg.com](https://gamehubbg.com?utm_source=github.com)
+
+</div>
+
+---
+
+# About The Project
+
+SoftUni GameHub is designed as a central place for showcasing student projects during the event.
+
+Instead of every game existing separately, the platform brings everything together into one polished experience with:
+
+- A modern game launcher
+- Individual game pages
+- Clean UI/UX
+- Easy navigation
+- Standalone game integrations
+- Expandable architecture for future events
+
+Each game is developed independently by different students and integrated into the platform as its own experience.
+
+---
+
+# Platform Preview
+
+## Main Hub
+
+> Main landing page / launcher screenshot
+
+<p align="center">
+  <img src="./Docs/Screenshots/landing.png" width="49%" />
+  <img src="./Docs/Screenshots/credits.png" width="49%" />
+  <img src="./Docs/Screenshots/games.png" width="70%" />
+</p>
+---
+
+# Games
+
+---
+
+## 🎯 Deyan
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Deyan Game](./screenshots/deyan-game.png)
+
+---
+
+## 🎯 Radoslav
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Radoslav Game](./screenshots/radoslav-game.png)
+
+---
+
+## 🎯 Ivailo
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Ivailo Game](./screenshots/ivailo-game.png)
+
+---
+
+## 🎯 Miroslav
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Miroslav Game](./screenshots/miroslav-game.png)
+
+---
+
+## 🎯 Hristiqn
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Hristiqn Game](./screenshots/hristiqn-game.png)
+
+---
+
+## 🎯 Dimitar
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Dimitar Game](./screenshots/dimitar-game.png)
+
+---
+
+## 🎯 Lubo
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Lubo Game](./screenshots/lubo-game.png)
+
+---
+
+## 🎯 Slav
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Slav Game](./screenshots/slav-game.png)
+
+---
+
+## 🎯 Damyan
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Damyan Game](./screenshots/damyan-game.png)
+
+---
+
+## 🎯 Viktor
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Viktor Game](./screenshots/viktor-game.png)
+
+---
+
+## 🎯 Filip-Boqn
+
+### Description
+Short description coming soon.
+
+### Preview
+
+![Filip-Boqn Game](./screenshots/filip-boqn-game.png)
+
+---
+
+# 🛠️ Technologies
+
+- React
+- Vite
+- TypeScript
+- HTML5 Canvas
+- JavaScript
+- CSS / TailwindCSS
+
+---
+
+# 📂 Project Structure
+
+```text
+GameHub/
+│
+├── GameHub/
+│
+├── Games/
+│    ├── deyan/
+│    ├── radoslav/
+│    ├── ivailo/
+│    ├── miroslav/
+│    └── ...
+│
+├── docs/
+│    ├── screenshots/
+│    └── ...
+│
+└── README.md
 ```
 
-Then open the URL Vite prints (usually http://localhost:5173).
+---
 
-## Build
+# 👨‍💻 Contributors
 
-```bash
-npm run build
-npm run preview
-```
+| Student    |
+| ---------- |
+| Deyan - Team Leader|
+| Radoslav   |
+| Ivailo     |
+| Miroslav   |
+| Hristiqn   |
+| Dimitar    |
+| Lubo       |
+| Slav       |
+| Damyan     |
+| Viktor     |
+| Filip-Boqn |
 
-## Editing games
+---
 
-All game data lives in [src/data/games.json](src/data/games.json). Add/edit entries there — the UI is purely data-driven.
+# 🌟 Goals
 
-Each entry shape:
+* Showcase student creativity
+* Present multiple game concepts in one platform
+* Create a polished event-ready experience
+* Make adding future games easy
+* Encourage collaboration between students
 
-```jsonc
-{
-  "id": "unique-id",
-  "name": "Game title",
-  "creator": "Author name",
-  "creatorGithub": "github-username",   // empty string = "GitHub coming soon"
-  "description": "Short event-ready description.",
-  "screenshot": "/screenshots/your-game.png", // missing file = animated fallback card
-  "status": "In development",            // any string; known: Playable, Prototype, Coming soon, Completed
-  "tags": ["Student Project", "Game"],
-  "branch": "Branch-Name",
-  "playUrl": "#"
-}
-```
+---
 
-## Screenshots
+# 📌 Notes
 
-Drop PNGs into `public/screenshots/<slug>-game.png`. If a screenshot is missing the card automatically renders a beautiful animated fallback — no broken images.
+Each student works independently on their own game branch while the main hub remains organized and stable.
 
-## Stack
+Games may use different technologies internally, but all projects are integrated into the same platform experience.
 
-- React 18 + TypeScript
-- Vite 5
-- TailwindCSS 3
-- Framer Motion
-- lucide-react icons
+---
 
-## Maintainer
+# 📄 License
 
-Maintained and led by **Deyan** — [@deo08mine](https://github.com/deo08mine).
+This project is intended for educational and showcase purposes as part of a SoftUni school event.
