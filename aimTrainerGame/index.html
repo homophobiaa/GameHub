@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🧭 Direction Memory Game | GameHub</title>
+  <title>🎯 Aim Trainer | GameHub</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="game">
     <header class="game__header">
       <a href="../../index.html" class="back-link" aria-label="Назад към GameHub">← GameHub</a>
-      <h1>🧭 Direction Memory</h1>
-      <p class="tagline">Повтори поредицата от посоки. Всеки рунд добавя нова.</p>
+      <h1>🎯 Aim Trainer</h1>
+      <p class="tagline">Уцели колкото може повече мишени за 30 секунди.</p>
     </header>
 
     <section class="hud" aria-label="Статистика">
@@ -20,8 +20,8 @@
         <span id="playerName" class="hud__value">Гост</span>
       </div>
       <div class="hud__item">
-        <span class="hud__label">Рунд</span>
-        <span id="round" class="hud__value">0</span>
+        <span class="hud__label">Време</span>
+        <span id="time" class="hud__value">30.0</span>
       </div>
       <div class="hud__item">
         <span class="hud__label">Точки</span>
@@ -33,22 +33,35 @@
       </div>
     </section>
 
-    <section class="stage" aria-live="polite">
-      <div id="status" class="status">Натисни „Старт“, за да започнеш</div>
-      <div id="sequenceDisplay" class="sequence-display" aria-hidden="true">·</div>
+    <section class="substats" aria-label="Текущ рунд">
+      <div class="substats__item">
+        <span class="substats__label">Комбо</span>
+        <span id="combo" class="substats__value">×1</span>
+      </div>
+      <div class="substats__item">
+        <span class="substats__label">Точност</span>
+        <span id="accuracy" class="substats__value">—</span>
+      </div>
+      <div class="substats__item">
+        <span class="substats__label">Уцелени</span>
+        <span id="hits" class="substats__value">0</span>
+      </div>
     </section>
 
-    <section class="pad" aria-label="Контролен пад">
-      <button class="arrow arrow--up"    data-dir="up"    aria-label="Нагоре">↑</button>
-      <button class="arrow arrow--left"  data-dir="left"  aria-label="Наляво">←</button>
-      <button class="arrow arrow--down"  data-dir="down"  aria-label="Надолу">↓</button>
-      <button class="arrow arrow--right" data-dir="right" aria-label="Надясно">→</button>
+    <section class="stage">
+      <div id="status" class="status">Натисни „Старт“, за да започнеш 30-секунден рунд</div>
+      <div id="playArea" class="play-area" aria-label="Поле за стрелба">
+        <div id="overlay" class="overlay">
+          <span class="overlay__icon">🎯</span>
+          <span class="overlay__text">Готов ли си?</span>
+        </div>
+      </div>
     </section>
 
     <section class="controls">
       <button id="startBtn" class="btn btn--primary">▶ Старт</button>
       <button id="resetBtn" class="btn btn--ghost" disabled>↺ Нова игра</button>
-      <p class="hint">Съвет: можеш да играеш и със стрелките на клавиатурата.</p>
+      <p class="hint">Съвет: кликни мишената бързо за бонус точки. Празните кликове развалят точността.</p>
     </section>
 
     <section class="leaderboard" aria-label="Класация">
