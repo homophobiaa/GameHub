@@ -1,4 +1,4 @@
-# GitHub Copilot Instructions
+# Agent Instructions
 
 ## Project Overview
 
@@ -86,7 +86,7 @@ The platform should feel like a real modern product.
 A separate file exists:
 
 ```text
-/GameHub/.github/design.md
+/design/design.md
 ```
 
 This file contains visual direction, inspiration, styling ideas, layout ideas, animation guidance, and design language.
@@ -109,7 +109,6 @@ Keep the project scalable and organized.
 Preferred structure:
 
 ```text
-/GameHub
 ├── src
 │   ├── components
 │   ├── pages
