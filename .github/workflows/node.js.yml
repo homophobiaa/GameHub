@@ -12,7 +12,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: ./GameHub
+        working-directory: ./
 
     steps:
       - name: Checkout
