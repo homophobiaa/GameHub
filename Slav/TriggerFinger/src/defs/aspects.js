@@ -13,7 +13,7 @@ export const ASPECT_DEFS = {
     source: "ghost",
     name: "Gloom",
     color: ENEMY_DEFS.ghost.color,
-    fullHealthDamageMultiplier: 0.3,
+    firstHitDamageMultiplier: 0.5,
   },
   vigor: {
     id: "vigor",

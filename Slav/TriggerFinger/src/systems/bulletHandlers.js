@@ -11,6 +11,7 @@ import {
   hitHorizontalBand,
   planHitLine,
   planShellLine,
+  PROJECTILE_END_Y,
 } from "./combatPrimitives.js";
 import {
   LANE_COUNT,
@@ -123,7 +124,7 @@ function addPlannedLine({
     color,
     result.path,
     getPiercingStageDelaySeconds({ stageCount: result.stageCount, currentBeat, targetBeat, beatSeconds }),
-    result.path.at(-1)?.y ?? 0.04,
+    result.path.at(-1)?.y ?? PROJECTILE_END_Y,
     result.impacts,
     result.stageCount,
     secondary,
@@ -148,7 +149,9 @@ const BULLET_HANDLERS = {
       maxTargets,
       lineOptions({ chipSummary, primaryHits: baseTargets, beatSeconds }),
     );
-    const endY = result.hits < result.maxTargets ? 0.04 : result.touched.at(-1)?.y ?? 0.04;
+    const endY = result.hits < result.maxTargets
+      ? PROJECTILE_END_Y
+      : result.touched.at(-1)?.y ?? PROJECTILE_END_Y;
     addPiercingProjectile(
       events,
       lane,
@@ -220,7 +223,7 @@ const BULLET_HANDLERS = {
 
     const hit = hitClosestInLaneDetailed(enemies, lane, scale(def.damage), currentBeat, events);
     const impactY = hit.target?.y;
-    addLaneProjectile(events, lane, def.color, false, impactY ?? 0.04);
+    addLaneProjectile(events, lane, def.color, false, impactY ?? PROJECTILE_END_Y);
 
     if (!Number.isFinite(impactY)) {
       return;
@@ -265,14 +268,14 @@ const BULLET_HANDLERS = {
     }
 
     const hit = hitClosestInLaneDetailed(enemies, lane, scale(def.damage), currentBeat, events);
-    addLaneProjectile(events, lane, def.color, false, hit.target?.y ?? 0.04);
+    addLaneProjectile(events, lane, def.color, false, hit.target?.y ?? PROJECTILE_END_Y);
     applyImmediateChipImpact({
       chipSummary,
       beatSeconds,
       hit,
       enemies,
       lane,
-      y: hit.target?.y ?? 0.04,
+      y: hit.target?.y ?? PROJECTILE_END_Y,
       amount: scale(def.damage),
       currentBeat,
       events,
@@ -307,6 +310,7 @@ const BULLET_HANDLERS = {
   toxic({ def, slot, lane, enemies, currentBeat, targetBeat, beatSeconds, events, scale, chipEffects }) {
     const chipSummary = summarizeChipEffects(chipEffects);
     const lanes = [lane - 1, lane, lane + 1].map((nextLane) => reflectedLane(lane, nextLane));
+    const beamWidth = def.beamWidth ?? 6;
 
     if (hasLineChipModifiers(chipSummary)) {
       lanes.forEach((nextLane) => {
@@ -338,7 +342,8 @@ const BULLET_HANDLERS = {
           currentBeat,
           targetBeat,
           beatSeconds,
-          secondary: nextLane !== lane,
+          secondary: false,
+          width: beamWidth,
         });
       });
       return;
@@ -346,7 +351,7 @@ const BULLET_HANDLERS = {
 
     lanes.forEach((nextLane) => {
       const hit = hitClosestInLaneDetailed(enemies, nextLane, scale(def.damage), currentBeat, events);
-      addLaneProjectile(events, nextLane, def.color, nextLane !== lane, hit.target?.y ?? 0.04);
+      addLaneProjectile(events, nextLane, def.color, false, hit.target?.y ?? PROJECTILE_END_Y, beamWidth);
       if (hit.result?.damaged) {
         applyDot(hit.target, def, slot, currentBeat, beatSeconds);
         applyImmediateChipImpact({
@@ -355,7 +360,7 @@ const BULLET_HANDLERS = {
           hit,
           enemies,
           lane: nextLane,
-          y: hit.target?.y ?? 0.04,
+          y: hit.target?.y ?? PROJECTILE_END_Y,
           amount: scale(def.damage),
           currentBeat,
           events,

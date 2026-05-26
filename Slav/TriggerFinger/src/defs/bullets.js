@@ -86,6 +86,7 @@ export const BULLET_DEFS = {
     dotDamage: BASE_DAMAGE * 0.7,
     dotDurationBeats: 2.5,
     upgradedDotDurationBeats: 1,
+    beamWidth: 6,
     description: "Hits three lanes and poisons what it touches.",
     upgradeName: "Caustic",
     upgradeDescription: "Hits three lanes and poisons what it touches rapidly.",
@@ -159,11 +160,12 @@ export const BULLET_POOL = [
 
 export const STARTING_TRACK = {
   cycleBeats: 3.5,
-  placements: [
-    { uid: "p1", id: "stinger", upgraded: false, beat: 3 },
-    { uid: "p2", id: "shell", upgraded: false, beat: 0 },
+  marginLevel: 0,
+  placements: [],
+  inventory: [
+    { uid: "p1", id: "stinger", upgraded: false },
+    { uid: "p2", id: "shell", upgraded: false },
   ],
-  inventory: [],
 };
 
 export function getBulletDef(id) {

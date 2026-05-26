@@ -54,16 +54,45 @@ export class IntermissionView {
     }
   }
 
+  playEnterAnimation() {
+    const panel = this.overlay.querySelector(".upgrade-panel");
+    if (!panel) {
+      return;
+    }
+
+    this.overlay.classList.remove("is-entering");
+    panel.classList.remove("is-entering");
+    void panel.offsetWidth;
+    this.overlay.classList.add("is-entering");
+    panel.classList.add("is-entering");
+
+    panel.addEventListener("animationend", () => {
+      panel.classList.remove("is-entering");
+    }, { once: true });
+
+    window.setTimeout(() => {
+      this.overlay.classList.remove("is-entering");
+    }, 240);
+  }
+
   renderIntermission(options) {
+    const shouldAnimate = this.overlay.hidden;
     const scrollState = this.captureScroll();
     this.overlay.hidden = false;
     this.overlay.innerHTML = renderIntermissionPanel(options);
+    if (shouldAnimate) {
+      this.playEnterAnimation();
+    }
     this.restoreScroll(scrollState);
   }
 
   renderGameOver(score, waveIndex) {
+    const shouldAnimate = this.overlay.hidden;
     this.overlay.hidden = false;
     this.overlay.innerHTML = renderGameOverPanel(score, waveIndex);
+    if (shouldAnimate) {
+      this.playEnterAnimation();
+    }
   }
 
   clear() {
@@ -72,5 +101,6 @@ export class IntermissionView {
 
   hide() {
     this.overlay.hidden = true;
+    this.overlay.classList.remove("is-entering");
   }
 }

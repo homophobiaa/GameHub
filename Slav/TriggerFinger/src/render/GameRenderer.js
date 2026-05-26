@@ -1,10 +1,61 @@
 import { getAspectDef, getAspectForSource } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
-import { ASPECT_SPREAD_TRAIL_ARC_PIXELS, ENEMY_BREACH_Y, LANE_COUNT, LANES } from "../config/gameplay.js";
+import {
+  ASPECT_SPREAD_TRAIL_ARC_PIXELS,
+  BEAT_FLASH_SECONDS,
+  ENEMY_BREACH_Y,
+  LANE_COUNT,
+  LANES,
+  PROJECTILE_END_Y,
+} from "../config/gameplay.js";
 import { beatPhase } from "../utils/beatMath.js";
 import { clamp } from "../utils/math.js";
 import { drawComboMeter } from "./comboMeterRenderer.js";
+import { drawDeathPuffParticles, drawPhaseBurstParticles, drawPoisonParticles } from "./particleEffects.js";
 import { easeInOut, mixHex } from "./renderUtils.js";
+
+const LANE_CUE_LOOKAHEAD_BEATS = 2.5;
+const LANE_CUE_LINGER_BEATS = 0.12;
+const POISON_TINT_COLOR = "#06371f";
+const POISON_FLASH_SECONDS = 0.28;
+const POISON_SUSTAIN_TINT = 0.2;
+
+function isPoisonDot(dot) {
+  return String(dot?.source ?? "").startsWith("toxic");
+}
+
+function getPoisonVisual(enemy) {
+  const poisonDots = (enemy.dots ?? []).filter(isPoisonDot);
+  if (!poisonDots.length) {
+    return null;
+  }
+
+  return poisonDots.reduce((strongest, dot) => {
+    const total = Math.max(0.001, dot.totalSeconds ?? dot.secondsRemaining ?? 0);
+    const remaining = Math.max(0, dot.secondsRemaining ?? 0);
+    const elapsed = Math.max(0, total - remaining);
+    const flash = clamp(1 - elapsed / POISON_FLASH_SECONDS, 0, 1);
+    const endFade = clamp(remaining / 0.12, 0, 1);
+    const tint = (POISON_SUSTAIN_TINT + flash * 0.55) * endFade;
+    return tint > strongest.tint
+      ? { tint, particleIntensity: Math.max(POISON_SUSTAIN_TINT, tint) * endFade }
+      : strongest;
+  }, { tint: 0, particleIntensity: POISON_SUSTAIN_TINT });
+}
+
+function getLeapScale(enemy, beat) {
+  const leap = enemy.leap;
+  if (!leap) {
+    return 1;
+  }
+
+  const progress = clamp(
+    (beat - leap.startBeat) / Math.max(0.001, leap.landBeat - leap.startBeat),
+    0,
+    1,
+  );
+  return 1 + Math.sin(progress * Math.PI) * 0.44;
+}
 
 export class GameRenderer {
   constructor(canvas) {
@@ -45,13 +96,20 @@ export class GameRenderer {
     activeBeams = [],
     comboMultiplier = 1,
     comboCap = 1,
+    suppressBeatBullets = false,
+    beatFlashTtl = 0,
+    beatFlashKind = "",
   }) {
     if (!this.width || !this.height) {
       return;
     }
 
     this.ctx.clearRect(0, 0, this.width, this.height);
-    this.drawArena(track, beat);
+    this.drawArena(track, beat, {
+      suppressBeatBullets,
+      beatFlashTtl,
+      beatFlashKind,
+    });
     drawComboMeter(this, comboMultiplier, comboCap, beat);
     this.drawSpawnWarnings(spawnWarnings, beat);
     this.drawSpeedBoosts(speedBoosts, beat);
@@ -78,7 +136,7 @@ export class GameRenderer {
     return y * (this.height - 72) + 24;
   }
 
-  drawArena(track, beat) {
+  drawArena(track, beat, { suppressBeatBullets = false, beatFlashTtl = 0, beatFlashKind = "" } = {}) {
     const ctx = this.ctx;
     ctx.fillStyle = "#12151b";
     ctx.fillRect(0, 0, this.width, this.height);
@@ -98,6 +156,11 @@ export class GameRenderer {
       ctx.lineTo(this.arena.x + lane * laneWidth, this.height);
       ctx.stroke();
     }
+
+    if (!suppressBeatBullets) {
+      this.drawLaneBulletCues(track, beat);
+    }
+    this.drawLaneShotFlash(beatFlashTtl, beatFlashKind);
 
     ctx.strokeStyle = "#f3bf4d";
     ctx.lineWidth = 2;
@@ -130,6 +193,99 @@ export class GameRenderer {
     const pulse = Math.max(0, 1 - Math.abs(delta) * 2);
     ctx.fillStyle = `rgba(243, 191, 77, ${0.08 + pulse * 0.16})`;
     ctx.fillRect(this.arena.x, this.yToScreen(ENEMY_BREACH_Y) - 18, this.arena.width, 36);
+  }
+
+  drawLaneBulletCues(track, beat) {
+    const bullets = track.getPreview(beat, 5);
+    if (!bullets.length) {
+      return;
+    }
+
+    const ctx = this.ctx;
+    const laneWidth = this.arena.width / LANE_COUNT;
+    const laneHeight = this.height;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    bullets.forEach((bullet, index) => {
+      const timeUntil = bullet.absoluteBeat - beat;
+      if (timeUntil < -LANE_CUE_LINGER_BEATS || timeUntil > LANE_CUE_LOOKAHEAD_BEATS) {
+        return;
+      }
+
+      const rawProgress = clamp(1 - timeUntil / LANE_CUE_LOOKAHEAD_BEATS, 0, 1);
+      const progress = rawProgress * rawProgress;
+      const recency = index === 0 ? 1 : 0.55 / (index + 1);
+      const alpha = (0.03 + rawProgress * 0.075 + progress * 0.035) * recency;
+      const bandWidth = (9 + progress * 20) * recency;
+      const color = bullet.elapseActive === false ? "#7b8390" : bullet.color;
+      const expandsFromCenter = bullet.elapseHalf === "right";
+
+      for (const lane of LANES) {
+        const laneX = this.arena.x + lane * laneWidth;
+        const laneCenterX = laneX + laneWidth * 0.5;
+        const spread = progress * laneWidth * 0.5;
+        const leftX = expandsFromCenter
+          ? laneCenterX - spread
+          : laneX + spread;
+        const rightX = expandsFromCenter
+          ? laneCenterX + spread
+          : laneX + laneWidth - spread;
+
+        ctx.fillStyle = color;
+        ctx.globalAlpha = alpha * 0.32;
+        ctx.fillRect(laneX + 2, 0, laneWidth - 4, laneHeight);
+
+        ctx.globalAlpha = alpha;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 14 + progress * 16;
+        this.drawVerticalCueBand(leftX, bandWidth, color);
+        this.drawVerticalCueBand(rightX, bandWidth, color);
+      }
+    });
+    ctx.restore();
+  }
+
+  drawVerticalCueBand(x, width, color) {
+    const ctx = this.ctx;
+    const gradient = ctx.createLinearGradient(x - width, 0, x + width, 0);
+    gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+    gradient.addColorStop(0.5, color);
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x - width, 0, width * 2, this.height);
+  }
+
+  drawLaneShotFlash(beatFlashTtl, beatFlashKind) {
+    if (beatFlashTtl <= 0) {
+      return;
+    }
+
+    const ratio = clamp(beatFlashTtl / BEAT_FLASH_SECONDS, 0, 1);
+    const isBad = beatFlashKind === "bad";
+    const color = isBad ? "#e65d5d" : "#ffffff";
+    const fillAlpha = isBad ? 0.08 + ratio * 0.16 : 0.025 + ratio * 0.065;
+    const lineAlpha = isBad ? 0.14 + ratio * 0.24 : 0.045 + ratio * 0.105;
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = fillAlpha;
+    ctx.fillStyle = color;
+    ctx.fillRect(this.arena.x, 0, this.arena.width, this.height);
+    ctx.globalAlpha = lineAlpha;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 24;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    for (const lane of LANES) {
+      const x = this.laneCenter(lane);
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, this.height);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   drawSpawnWarnings(warnings, beat) {
@@ -226,28 +382,52 @@ export class GameRenderer {
       const x = this.laneCenter(enemy.lane) + (enemy.visualLaneOffset ?? 0) * laneWidth;
       const visualY = enemy.visualY ?? enemy.y;
       const y = this.yToScreen(visualY);
-      const radius = enemy.type === "barrier" ? 25 : enemy.type === "leap" ? 23 : 21;
-      const fillColor = enemy.type === "basic" && aspect
+      const baseRadius = enemy.type === "barrier" ? 25 : enemy.type === "leap" ? 23 : 21;
+      const cheerLeading = enemy.type === "cheer" && enemy.cheerLeading !== false;
+      const cheerChangeProgress = enemy.cheerStateTtl > 0
+        ? 1 - clamp(enemy.cheerStateTtl / Math.max(0.001, enemy.cheerStateDuration ?? 0.22), 0, 1)
+        : 1;
+      const cheerPulse = enemy.cheerStateTtl > 0
+        ? Math.sin(cheerChangeProgress * Math.PI) * 0.12
+        : 0;
+      const radius = baseRadius *
+        (enemy.type === "cheer" && !cheerLeading ? 0.82 : 1) *
+        (enemy.type === "cheer" ? 1 + cheerPulse : 1) *
+        (enemy.type === "leap" ? getLeapScale(enemy, beat) : 1);
+      const baseFillColor = enemy.type === "basic" && aspect
         ? mixHex(def.color, aspect.color, 0.34)
         : def.color;
+      const shapeBaseColor = enemy.type === "cheer" && !cheerLeading
+        ? mixHex(baseFillColor, "#0b0d12", 0.2)
+        : baseFillColor;
+      const poison = getPoisonVisual(enemy);
+      const fillColor = poison
+        ? mixHex(shapeBaseColor, POISON_TINT_COLOR, poison.tint)
+        : shapeBaseColor;
 
+      const ghostIsPhasing = enemy.type === "ghost" && enemy.ghostCharges > 0;
       const ghostAlpha = 0.5 + Math.sin((beat * 2.6 + enemy.id * 1.7) * Math.PI) * 0.2;
-      ctx.fillStyle = fillColor;
       ctx.globalAlpha = enemy.targetable === false
         ? 0.68
-        : enemy.ghostCharges > 0
+        : ghostIsPhasing
           ? ghostAlpha
           : 1;
-      ctx.beginPath();
-      ctx.roundRect(
-        x - radius,
-        y - radius,
-        radius * 2,
-        radius * 2,
-        enemy.type === "barrier" ? 5 : 16,
-      );
-      ctx.fill();
+      this.drawEnemyShape(enemy, x, y, radius, fillColor, {
+        fill: enemy.type !== "ghost" || !ghostIsPhasing,
+        stroke: enemy.type === "ghost",
+      });
       ctx.globalAlpha = 1;
+
+      if (poison) {
+        drawPoisonParticles(ctx, {
+          x,
+          y,
+          radius,
+          beat,
+          enemyId: enemy.id,
+          intensity: poison.particleIntensity,
+        });
+      }
 
       if (enemy.flashTtl > 0) {
         const duration = Math.max(0.001, enemy.flashDuration ?? 0.18);
@@ -260,18 +440,16 @@ export class GameRenderer {
         ctx.shadowColor = flashColor;
         ctx.shadowBlur = 16;
         ctx.globalAlpha = (1 - progress) * 0.62;
-        ctx.beginPath();
-        ctx.roundRect(
-          x - radius - 4,
-          y - radius - 4,
-          radius * 2 + 8,
-          radius * 2 + 8,
-          enemy.type === "barrier" ? 7 : 18,
-        );
-        ctx.fill();
+        this.drawEnemyShape(enemy, x, y, radius + 4, mixHex(flashColor, "#ffffff", 0.36), {
+          fill: true,
+          stroke: false,
+        });
         ctx.globalAlpha = (1 - progress) * 0.9;
         ctx.lineWidth = 3;
-        ctx.stroke();
+        this.drawEnemyShape(enemy, x, y, radius + 4, flashColor, {
+          fill: false,
+          stroke: true,
+        });
         ctx.restore();
       }
 
@@ -301,6 +479,49 @@ export class GameRenderer {
         this.drawLeapTargetIndicator(enemy, getEnemyDef(enemy.type), beat);
       }
     });
+  }
+
+  drawEnemyShape(enemy, x, y, radius, color, { fill = true, stroke = false } = {}) {
+    const ctx = this.ctx;
+    ctx.beginPath();
+
+    if (enemy.type === "regen") {
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+    } else if (enemy.type === "ghost") {
+      ctx.rect(x - radius, y - radius, radius * 2, radius * 2);
+    } else if (enemy.type === "leap") {
+      ctx.moveTo(x, y - radius);
+      ctx.lineTo(x + radius, y);
+      ctx.lineTo(x, y + radius);
+      ctx.lineTo(x - radius, y);
+      ctx.closePath();
+    } else if (enemy.type === "cheer") {
+      const side = radius * 2.12;
+      const height = side * Math.sqrt(3) / 2;
+      ctx.moveTo(x - side / 2, y - height / 3);
+      ctx.lineTo(x + side / 2, y - height / 3);
+      ctx.lineTo(x, y + height * 2 / 3);
+      ctx.closePath();
+    } else {
+      ctx.roundRect(
+        x - radius,
+        y - radius,
+        radius * 2,
+        radius * 2,
+        enemy.type === "barrier" ? 5 : 16,
+      );
+    }
+
+    if (fill) {
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    if (stroke) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = enemy.type === "ghost" ? 4 : 3;
+      ctx.stroke();
+    }
   }
 
   drawLeapTargetIndicator(enemy, def, beat) {
@@ -418,32 +639,28 @@ export class GameRenderer {
 
       if (effect.kind === "phaseBurst") {
         const progress = 1 - clamp(effect.ttl / effect.duration, 0, 1);
-        const spread = 0.16 + progress * 0.84;
-        const coneWidth = Math.PI / 6;
         const baseX = this.laneCenter(effect.lane);
         const baseY = this.yToScreen(effect.y);
 
-        for (let i = 0; i < 12; i += 1) {
-          const lift = (28 + i * 8) * spread;
-          const fanPosition = ((i % 6) / 5) * 2 - 1;
-          const drift = fanPosition * lift * Math.tan(coneWidth / 2);
-          const x = baseX + drift;
-          const y = baseY - lift + Math.sin(spread * Math.PI + i) * 2;
-          const radius = 1.4 + (i % 3) * 0.45;
-
-          ctx.globalAlpha = (1 - progress) * 0.46;
-          ctx.fillStyle = "#16101f";
-          ctx.beginPath();
-          ctx.arc(x, y, radius + 1.6, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.globalAlpha = (1 - progress) * (0.56 + (i % 4) * 0.05);
-          ctx.fillStyle = "#f2eaff";
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        drawPhaseBurstParticles(ctx, { x: baseX, y: baseY, progress });
         ctx.globalAlpha = 1;
+        return;
+      }
+
+      if (effect.kind === "deathPuff") {
+        const progress = 1 - clamp(effect.ttl / effect.duration, 0, 1);
+        const laneWidth = this.arena.width / LANE_COUNT;
+        const x = this.laneCenter(effect.lane) + (effect.laneOffset ?? 0) * laneWidth;
+        const y = this.yToScreen(effect.y);
+
+        drawDeathPuffParticles(ctx, {
+          x,
+          y,
+          radius: effect.radius,
+          progress,
+          color: effect.color,
+          seed: effect.seed,
+        });
         return;
       }
 
@@ -452,12 +669,7 @@ export class GameRenderer {
         return;
       }
 
-      if (effect.kind === "piercingProjectile") {
-        this.drawPiercingProjectileEffect(effect);
-        return;
-      }
-
-      if (effect.kind === "projectile") {
+      if (effect.kind === "projectile" || effect.kind === "piercingProjectile") {
         const group = projectileGroups.get(effect.lane) ?? [];
         group.push(effect);
         projectileGroups.set(effect.lane, group);
@@ -467,12 +679,17 @@ export class GameRenderer {
     projectileGroups.forEach((projectiles, lane) => {
       projectiles.forEach((effect, index) => {
         const offset = (index - (projectiles.length - 1) / 2) * 11;
+        if (effect.kind === "piercingProjectile") {
+          this.drawPiercingProjectileEffect(effect, offset);
+          return;
+        }
+
         this.drawProjectileEffect(effect, lane, offset);
       });
     });
   }
 
-  drawPiercingProjectileEffect(effect) {
+  drawPiercingProjectileEffect(effect, xOffset = 0) {
     const path = effect.path ?? [];
     if (path.length === 0) {
       return;
@@ -490,7 +707,7 @@ export class GameRenderer {
       1,
     );
     const alpha = 1 - fadeProgress;
-    const x = this.laneCenter(effect.lane);
+    const x = this.laneCenter(effect.lane) + xOffset;
 
     ctx.save();
     ctx.strokeStyle = effect.color;
@@ -571,7 +788,7 @@ export class GameRenderer {
     ctx.lineWidth = effect.width ?? (effect.secondary ? 5 : 8);
     ctx.beginPath();
     ctx.moveTo(x, this.yToScreen(ENEMY_BREACH_Y));
-    ctx.lineTo(x, this.yToScreen(effect.endY ?? 0.04));
+    ctx.lineTo(x, this.yToScreen(effect.endY ?? PROJECTILE_END_Y));
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
@@ -585,7 +802,7 @@ export class GameRenderer {
     beams.forEach((beam) => {
       const x = this.laneCenter(beam.lane);
       const startY = this.yToScreen(ENEMY_BREACH_Y);
-      const endY = this.yToScreen(beam.targetY ?? 0.04);
+      const endY = this.yToScreen(beam.targetY ?? PROJECTILE_END_Y);
       const pulse = 0.72 + Math.sin(beat * Math.PI * 4) * 0.18;
 
       ctx.save();

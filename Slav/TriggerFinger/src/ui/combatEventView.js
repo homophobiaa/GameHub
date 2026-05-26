@@ -6,6 +6,7 @@ import {
   PROJECTILE_SECONDS,
   SECONDARY_PROJECTILE_SECONDS,
   SLASH_SECONDS,
+  PROJECTILE_END_Y,
 } from "../config/gameplay.js";
 
 function findVisualEnemy(enemies, event) {
@@ -26,7 +27,7 @@ function addProjectile({ event, effects }) {
     color: event.color,
     ttl: event.secondary ? SECONDARY_PROJECTILE_SECONDS : PROJECTILE_SECONDS,
     secondary: event.secondary,
-    endY: event.endY ?? 0.04,
+    endY: event.endY ?? PROJECTILE_END_Y,
     width: event.width,
   });
 }

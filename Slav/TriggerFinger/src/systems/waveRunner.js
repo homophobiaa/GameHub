@@ -11,10 +11,10 @@ import {
 import {
   LANE_COUNT,
   LANES,
-  LEAP_AIR_BEATS,
   LEAP_FIELD_COOLDOWN_SECONDS,
 } from "../config/gameplay.js";
 import { toEnemyFrameIndex } from "./enemyFrameIndex.js";
+import { getLeapLandBeat } from "./leapMotion.js";
 import { randomInt } from "../utils/random.js";
 
 const PATTERN_ACTIVATION_GAP_BEATS = 1.25;
@@ -451,32 +451,55 @@ export class WaveRunner {
     }
 
     const localBeat = currentBeat - this.startBeat;
-    return this.spawnSchedule
-      .slice(this.spawnIndex)
-      .map((spawn, index) => ({
+    const warnings = [];
+    for (let index = this.spawnIndex; index < this.spawnSchedule.length; index += 1) {
+      const spawn = this.spawnSchedule[index];
+      const isNext = index === this.spawnIndex;
+      const timeUntil = (
+        isNext && Number.isFinite(this.hurrySpawnBeat)
+          ? Math.min(spawn.beat, this.hurrySpawnBeat)
+          : spawn.beat
+      ) - localBeat;
+
+      if (timeUntil < 0) {
+        continue;
+      }
+
+      if (timeUntil > lookaheadBeats) {
+        break;
+      }
+
+      warnings.push({
         lane: spawn.lane,
         color: spawn.color,
-        timeUntil:
-          (index === 0 && Number.isFinite(this.hurrySpawnBeat)
-            ? Math.min(spawn.beat, this.hurrySpawnBeat)
-            : spawn.beat) - localBeat,
-      }))
-      .filter((warning) => warning.timeUntil >= 0 && warning.timeUntil <= lookaheadBeats)
-      .map((warning) => ({
-        ...warning,
-        strength: 1 - warning.timeUntil / lookaheadBeats,
-      }));
+        timeUntil,
+        strength: 1 - timeUntil / lookaheadBeats,
+      });
+    }
+
+    return warnings;
   }
 
   pendingPatternSpawnCount() {
-    return this.patterns
-      .filter((pattern) => !pattern.done)
-      .reduce((total, pattern) => total + Math.max(1, pattern.consumeCount ?? 1), 0);
+    let total = 0;
+    this.patterns.forEach((pattern) => {
+      if (!pattern.done) {
+        total += Math.max(1, pattern.consumeCount ?? 1);
+      }
+    });
+    return total;
   }
 
   getProgress(kills = 0, enemies = []) {
     const alive = toEnemyFrameIndex(enemies).liveCount();
-    const pendingPatternSpawns = this.pendingPatternSpawnCount();
+    let pendingPatternSpawns = 0;
+    let pendingPatternCount = 0;
+    this.patterns.forEach((pattern) => {
+      if (!pattern.done) {
+        pendingPatternCount += 1;
+        pendingPatternSpawns += Math.max(1, pattern.consumeCount ?? 1);
+      }
+    });
     const total = Math.max(
       kills + alive,
       this.spawnSchedule.length + pendingPatternSpawns,
@@ -488,7 +511,7 @@ export class WaveRunner {
       total,
       spawned: this.spawnIndex,
       remainingScheduled: Math.max(0, this.spawnSchedule.length - this.spawnIndex) + pendingPatternSpawns,
-      pendingPatterns: this.patterns.filter((pattern) => !pattern.done).length,
+      pendingPatterns: pendingPatternCount,
       active: this.active,
     };
   }
@@ -552,7 +575,7 @@ export function createEnemy(type, lane, options = {}) {
       targetY: options.spawn.leapTargetY,
       destinationY: options.spawn.leapFallback ? options.spawn.leapTargetY : null,
       startBeat,
-      landBeat: startBeat + LEAP_AIR_BEATS,
+      landBeat: getLeapLandBeat(startBeat, options.spawn.leapTargetY),
       startY: 0.02,
       arcSide: enemyId % 2 === 0 ? 1 : -1,
     };

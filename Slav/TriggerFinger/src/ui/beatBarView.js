@@ -18,6 +18,9 @@ export class BeatBarView {
     this.beatStrip = beatStrip;
     this.beatMarkers = beatMarkers;
     this.beatMarkerBeats = new Map();
+    this.markerElements = new Map();
+    this.lastMeasureBeat = null;
+    this.lastWinddownRatio = null;
   }
 
   clearMotion() {
@@ -40,19 +43,25 @@ export class BeatBarView {
 
     const phase = beatPhase(beat);
     const measureBeat = (Math.floor(beat) % 4) + 1;
-    this.beatCount.textContent = `${measureBeat}`;
-    this.beatStrip.classList.toggle("is-pulsing", phase < 0.13);
-    this.beatStrip.classList.toggle("is-offbeat", Math.abs(phase - 0.5) < 0.08);
-    this.beatStrip.classList.toggle(
+    if (this.lastMeasureBeat !== measureBeat) {
+      this.beatCount.textContent = `${measureBeat}`;
+      this.lastMeasureBeat = measureBeat;
+    }
+    this.toggleStripClass("is-pulsing", phase < 0.13);
+    this.toggleStripClass("is-offbeat", Math.abs(phase - 0.5) < 0.08);
+    this.toggleStripClass(
       "is-flash-good",
       beatFlashTtl > 0 && beatFlashKind === "good",
     );
-    this.beatStrip.classList.toggle(
+    this.toggleStripClass(
       "is-flash-bad",
       beatFlashTtl > 0 && beatFlashKind === "bad",
     );
-    this.beatStrip.classList.toggle("is-winding-down", waveClearOutro);
-    this.beatStrip.style.setProperty("--beat-winddown", `${winddownRatio}`);
+    this.toggleStripClass("is-winding-down", waveClearOutro);
+    if (this.lastWinddownRatio !== winddownRatio) {
+      this.beatStrip.style.setProperty("--beat-winddown", `${winddownRatio}`);
+      this.lastWinddownRatio = winddownRatio;
+    }
 
     this.renderMarkers({
       beat,
@@ -60,6 +69,43 @@ export class BeatBarView {
       suppressBeatBullets,
       bursts,
     });
+  }
+
+  toggleStripClass(className, enabled) {
+    if (this.beatStrip.classList.contains(className) !== enabled) {
+      this.beatStrip.classList.toggle(className, enabled);
+    }
+  }
+
+  createMarkerElement(dotClass = "beat-cylinder") {
+    const element = document.createElement("div");
+    const left = document.createElement("span");
+    const right = document.createElement("span");
+    left.className = `${dotClass} is-left`;
+    right.className = `${dotClass} is-right`;
+    element.append(left, right);
+    return element;
+  }
+
+  syncMarkerElement(key, { baseClass, classes = [], dotClass, offset, color, alpha = null }) {
+    let element = this.markerElements.get(key);
+    if (!element) {
+      element = this.createMarkerElement(dotClass);
+      this.markerElements.set(key, element);
+      this.beatMarkers.append(element);
+    }
+
+    const className = [baseClass, ...classes].filter(Boolean).join(" ");
+    if (element.className !== className) {
+      element.className = className;
+    }
+    element.style.setProperty("--offset", `${offset}%`);
+    element.style.setProperty("--marker-color", color);
+    if (alpha === null) {
+      element.style.removeProperty("--alpha");
+    } else {
+      element.style.setProperty("--alpha", `${alpha}`);
+    }
   }
 
   renderMarkers({ beat, track, suppressBeatBullets, bursts }) {
@@ -70,8 +116,8 @@ export class BeatBarView {
           previewIndex,
         }));
     const firstMarker = floorToHalfBeat(beat - 0.12);
-    const markerHtml = [];
-    const usedKeys = new Set();
+    const usedElementKeys = new Set();
+    const usedVisualKeys = new Set();
 
     for (let i = 0; i < 11; i += 1) {
       const markerBeat = firstMarker + i * HALF_BEAT;
@@ -82,16 +128,16 @@ export class BeatBarView {
 
       const offset = markerOffsetPercent(timeUntil);
       const beatClass = isOnBeat(markerBeat) ? "is-beat" : "is-offbeat";
+      const key = `beat:${markerBeat.toFixed(2)}`;
+      usedElementKeys.add(key);
 
-      markerHtml.push(`
-        <div
-          class="beat-converge ${beatClass}"
-          style="--offset:${offset}%;--marker-color:#738096"
-        >
-          <span class="beat-cylinder is-left"></span>
-          <span class="beat-cylinder is-right"></span>
-        </div>
-      `);
+      this.syncMarkerElement(key, {
+        baseClass: "beat-converge",
+        classes: [beatClass],
+        dotClass: "beat-cylinder",
+        offset,
+        color: "#738096",
+      });
     }
 
     bullets.forEach((bullet) => {
@@ -100,44 +146,54 @@ export class BeatBarView {
         bullet.isCurrent && beat < (track.reloadUntilBeat ?? -Infinity);
       const visualBeat = this.getVisualBeat(key, bullet.absoluteBeat, isReloadLocked, track.cycleBeats);
       const timeUntil = visualBeat - beat;
-      usedKeys.add(key);
+      usedVisualKeys.add(key);
 
       if (timeUntil < -0.12 || timeUntil > BEAT_BAR_LOOKAHEAD) {
         return;
       }
 
       const beatClass = isOnBeat(bullet.absoluteBeat) ? "is-beat" : "is-offbeat";
-      markerHtml.push(`
-        <div
-          class="beat-bullet-overlay ${beatClass} ${bullet.upgraded ? "is-upgraded" : ""} ${bullet.elapseActive === false ? "is-elapse-inactive" : ""} ${bullet.isCurrent ? "is-current" : ""}"
-          style="--offset:${markerOffsetPercent(timeUntil)}%;--marker-color:${bullet.color}"
-        >
-          <span class="beat-cylinder is-left"></span>
-          <span class="beat-cylinder is-right"></span>
-        </div>
-      `);
+      usedElementKeys.add(key);
+      this.syncMarkerElement(key, {
+        baseClass: "beat-bullet-overlay",
+        classes: [
+          beatClass,
+          bullet.upgraded ? "is-upgraded" : "",
+          bullet.elapseActive === false ? "is-elapse-inactive" : "",
+          bullet.isCurrent ? "is-current" : "",
+        ],
+        dotClass: "beat-cylinder",
+        offset: markerOffsetPercent(timeUntil),
+        color: bullet.color,
+      });
     });
 
-    bursts.forEach((burst) => {
+    bursts.forEach((burst, index) => {
       const alpha = clamp(burst.ttl / 0.24, 0, 1);
-      markerHtml.push(`
-        <div
-          class="beat-burst ${burst.isBeat ? "is-beat" : "is-offbeat"}"
-          style="--offset:${burst.offset}%;--marker-color:${burst.color};--alpha:${alpha}"
-        >
-          <span class="beat-burst-dot is-left"></span>
-          <span class="beat-burst-dot is-right"></span>
-        </div>
-      `);
+      const key = `burst:${burst.id ?? index}`;
+      usedElementKeys.add(key);
+      this.syncMarkerElement(key, {
+        baseClass: "beat-burst",
+        classes: [burst.isBeat ? "is-beat" : "is-offbeat"],
+        dotClass: "beat-burst-dot",
+        offset: burst.offset,
+        color: burst.color,
+        alpha,
+      });
     });
 
     [...this.beatMarkerBeats.keys()].forEach((key) => {
-      if (!usedKeys.has(key)) {
+      if (!usedVisualKeys.has(key)) {
         this.beatMarkerBeats.delete(key);
       }
     });
 
-    this.beatMarkers.innerHTML = markerHtml.join("");
+    [...this.markerElements.entries()].forEach(([key, element]) => {
+      if (!usedElementKeys.has(key)) {
+        element.remove();
+        this.markerElements.delete(key);
+      }
+    });
   }
 
   getVisualBeat(key, targetBeat, forceSnap = false, cycleBeats = 1) {

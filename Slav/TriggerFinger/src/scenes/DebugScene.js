@@ -214,7 +214,7 @@ export class DebugScene extends GameScene {
     });
     enemy.y = 0.12;
     enemy.visualY = -0.08;
-    this.enemies.push(enemy);
+    this.spawnEnemy(enemy);
     this.editorMessage = `Spawned ${getEnemyDef(this.debugEnemyType).name}.`;
   }
 
@@ -246,6 +246,7 @@ export class DebugScene extends GameScene {
   playDebugWave() {
     this.waveIndex = Math.max(0, this.debugWaveNumber - 1);
     this.waveRunner = new WaveRunner();
+    this.resetWaveResources();
     this.prepareTrackForWaveStart();
     this.waveRunner.start(this.waveIndex, this.beat, {
       enemyPool: this.enemyPool,

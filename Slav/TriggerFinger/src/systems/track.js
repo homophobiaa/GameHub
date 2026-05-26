@@ -16,7 +16,12 @@ import {
   isValidTiming,
   snapToHalfBeat,
 } from "../utils/beatMath.js";
-import { GOOD_WINDOW_BEATS, TRACK_RELOAD_BEATS } from "../config/gameplay.js";
+import {
+  GOOD_WINDOW_BEATS,
+  MAX_TRACK_MARGIN_LEVEL,
+  TRACK_MARGIN_BEATS_PER_LEVEL,
+  TRACK_RELOAD_BEATS,
+} from "../config/gameplay.js";
 
 function clonePiece(piece) {
   return {
@@ -38,8 +43,8 @@ function finiteBeat(value, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
-function beatReleaseAfter(targetBeat) {
-  return Math.floor(finiteBeat(targetBeat)) + 1;
+function precedingHalfBeat(targetBeat) {
+  return finiteBeat(targetBeat) - HALF_BEAT;
 }
 
 function timingPhaseForPlacement(placement, def) {
@@ -82,6 +87,7 @@ function nextGroupId(pieces) {
 export function cloneTrackConfig(config) {
   return {
     cycleBeats: config.cycleBeats,
+    marginLevel: Math.min(MAX_TRACK_MARGIN_LEVEL, Math.max(0, config.marginLevel ?? 0)),
     placements: config.placements.map(clonePlacement),
     inventory: config.inventory.map(clonePiece),
   };
@@ -92,6 +98,7 @@ export class BeatTrack {
     const initial = Array.isArray(config)
       ? {
           cycleBeats: Math.max(4, config.length * 2),
+          marginLevel: 0,
           placements: config.map((slot, index) => ({
             uid: `p${index + 1}`,
             id: slot.id,
@@ -103,6 +110,7 @@ export class BeatTrack {
       : cloneTrackConfig(config);
 
     this.cycleBeats = initial.cycleBeats;
+    this.marginLevel = initial.marginLevel ?? 0;
     this.placements = initial.placements;
     this.inventory = initial.inventory;
     this.pieceOrder = [...initial.placements, ...initial.inventory].map((piece) => piece.uid);
@@ -169,6 +177,38 @@ export class BeatTrack {
     return this._placementUids;
   }
 
+  get lastPlaceableBeat() {
+    return Math.max(0, this.cycleBeats - HALF_BEAT);
+  }
+
+  get marginBeats() {
+    return this.marginLevel * TRACK_MARGIN_BEATS_PER_LEVEL;
+  }
+
+  get domainStartBeat() {
+    return -this.marginBeats;
+  }
+
+  get domainEndBeat() {
+    return this.lastPlaceableBeat + this.marginBeats;
+  }
+
+  get timelineStartBeat() {
+    return this.domainStartBeat;
+  }
+
+  get timelineEndBeat() {
+    return this.domainEndBeat;
+  }
+
+  get timelineSpanBeats() {
+    return Math.max(HALF_BEAT, this.timelineEndBeat - this.timelineStartBeat);
+  }
+
+  get slotSpanBeats() {
+    return this.lastPlaceableBeat;
+  }
+
   get currentEntry() {
     const placement = this.sortedPlacements[this.currentIndex];
     return placement ? this.createEntry(placement) : null;
@@ -228,7 +268,7 @@ export class BeatTrack {
           beat,
           isBeat: isOnBeat(beat),
           isOffBeat: isOffBeat(beat),
-          left: (beat / this.cycleBeats) * 100,
+          left: ((beat - this.timelineStartBeat) / this.timelineSpanBeats) * 100,
         });
       }
 
@@ -389,6 +429,18 @@ export class BeatTrack {
       };
     }
 
+    const actionGateBeat = precedingHalfBeat(this.targetBeat);
+    if (safeCurrentBeat < actionGateBeat - EPSILON) {
+      const reloadUntilBeat = finiteBeat(this.reloadUntilBeat, -Infinity);
+      return {
+        blocked: true,
+        reason: safeCurrentBeat < reloadUntilBeat - EPSILON ? "reload" : "wait",
+        entry: this.currentEntry,
+        targetBeat: this.targetBeat,
+        waitBeats: actionGateBeat - safeCurrentBeat,
+      };
+    }
+
     if (safeCurrentBeat < finiteBeat(this.lockUntilBeat) - EPSILON) {
       return {
         blocked: true,
@@ -430,16 +482,17 @@ export class BeatTrack {
       nextEntry,
       nextEntry.def,
     );
-    this.reloadUntilBeat = didWrap ? safeTargetBeat + TRACK_RELOAD_BEATS : null;
-    this.readyAfterBeat = safeTargetBeat + HALF_BEAT;
-    this.lockUntilBeat = this.readyAfterBeat;
+    const nextActionGateBeat = precedingHalfBeat(nextTargetBeat);
+    this.reloadUntilBeat = didWrap ? nextActionGateBeat : null;
+    this.readyAfterBeat = nextActionGateBeat;
+    this.lockUntilBeat = nextActionGateBeat;
     this.baseTargetBeat = nextTargetBeat;
-    this.targetBeat = this.getTargetBeat(this.readyAfterBeat);
+    this.targetBeat = this.getTargetBeat(nextActionGateBeat);
   }
 
   registerBadShot(targetBeat) {
     const safeTargetBeat = finiteBeat(targetBeat, finiteBeat(this.targetBeat));
-    const releaseBeat = beatReleaseAfter(safeTargetBeat);
+    const releaseBeat = precedingHalfBeat(safeTargetBeat);
     this.reloadUntilBeat = null;
     this.readyAfterBeat = Math.max(finiteBeat(this.readyAfterBeat), releaseBeat);
     this.lockUntilBeat = releaseBeat;
@@ -544,7 +597,7 @@ export class BeatTrack {
     }
 
     const domain = this.getDomain(piece, beat);
-    if (domain.start < -EPSILON || domain.end > this.cycleBeats + EPSILON) {
+    if (domain.start < this.domainStartBeat - EPSILON || domain.end > this.domainEndBeat + EPSILON) {
       return { ok: false, reason: "Lead/follow time leaves the loop." };
     }
 
@@ -676,6 +729,13 @@ export class BeatTrack {
 
   expandCycle(beats = 1) {
     this.cycleBeats = Math.min(12, this.cycleBeats + beats);
+    this._timelineMarks = null;
+    this.baseTargetBeat = null;
+  }
+
+  expandMargin(levels = 1) {
+    const nextLevel = this.marginLevel + Math.max(1, levels);
+    this.marginLevel = Math.min(MAX_TRACK_MARGIN_LEVEL, nextLevel);
     this._timelineMarks = null;
     this.baseTargetBeat = null;
   }

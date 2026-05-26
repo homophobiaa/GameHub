@@ -1,5 +1,6 @@
 import { BULLET_POOL, getBulletDef } from "../defs/bullets.js";
 import { CHIP_TUNING } from "../defs/chips.js";
+import { MAX_TRACK_MARGIN_LEVEL, STARTING_PLATING } from "../config/gameplay.js";
 import { MAX_COMBO_CAP } from "./timing.js";
 import { pickRandom } from "../utils/random.js";
 
@@ -80,6 +81,15 @@ function createWorkshopChoices(track, runState = {}) {
     });
   }
 
+  if ((track.marginLevel ?? 0) < MAX_TRACK_MARGIN_LEVEL) {
+    rotatingChoices.push({
+      kind: "margin",
+      amount: 1,
+      title: "+1 Margin",
+      copy: "Adds half a beat of domain space before and after the timeline.",
+    });
+  }
+
   const comboCap = runState.comboCap ?? 1.5;
   if (comboCap < MAX_COMBO_CAP) {
     const amount = Math.min(0.25, MAX_COMBO_CAP - comboCap);
@@ -95,15 +105,15 @@ function createWorkshopChoices(track, runState = {}) {
     kind: "shockwave",
     amount: 1,
     title: "+1 Shockwave",
-    copy: "The next breach spends one to knock every enemy back.",
+    copy: "Adds one rechargeable shockwave for enemies near the base.",
   });
 
   return [
     {
       kind: "repair",
       amount: 5,
-      title: "+5 Health",
-      copy: "Adds five health to this run.",
+      title: "+5 Plating",
+      copy: "Raises wave-start plating by five.",
     },
     ...pickRandom(rotatingChoices, 2),
   ];
@@ -182,15 +192,21 @@ export function applyUpgradeChoice(track, choice, runState = {}) {
     track.expandCycle(choice.beats ?? 1);
   }
 
+  if (choice.kind === "margin") {
+    track.expandMargin(choice.amount ?? 1);
+  }
+
   if (choice.kind === "combo-cap") {
     runState.comboCap = Math.min(MAX_COMBO_CAP, (runState.comboCap ?? 1.5) + (choice.amount ?? 0.25));
   }
 
   if (choice.kind === "repair") {
-    runState.health = (runState.health ?? 0) + (choice.amount ?? 5);
+    runState.maxPlating = (runState.maxPlating ?? runState.plating ?? STARTING_PLATING) + (choice.amount ?? 5);
+    runState.plating = runState.maxPlating;
   }
 
   if (choice.kind === "shockwave") {
-    runState.shockwaves = (runState.shockwaves ?? 0) + (choice.amount ?? 1);
+    runState.maxShockwaves = (runState.maxShockwaves ?? runState.shockwaves ?? 0) + (choice.amount ?? 1);
+    runState.shockwaves = runState.maxShockwaves;
   }
 }

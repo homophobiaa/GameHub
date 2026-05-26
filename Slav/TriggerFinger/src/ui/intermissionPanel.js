@@ -282,8 +282,11 @@ export function renderIntermissionPanel({
   const selectedCopy = selected
     ? `${escapeHtml(getSlotName(selected))} | ${renderTimingStats(selected, selectedDef)} | ${renderBulletDescription(selected, selectedDef)}`
     : "Select a bullet to inspect it.";
+  const isReadyCheck = isFirst && !debugTools && !hasStore && !hasWoeDraft;
 
-  const choiceHtml = debugTools
+  const choiceHtml = isReadyCheck
+    ? ""
+    : debugTools
     ? `
       <aside class="store-menu debug-menu">
         ${debugTools}
@@ -343,7 +346,7 @@ export function renderIntermissionPanel({
     `;
 
   return `
-    <section class="upgrade-panel intermission-panel">
+    <section class="upgrade-panel intermission-panel ${isReadyCheck ? "is-ready-check" : ""}">
       <div class="upgrade-heading">
         <div>
           <h2>${isFirst ? "Ready Check" : `Wave ${waveIndex} Clear`}</h2>
@@ -351,13 +354,13 @@ export function renderIntermissionPanel({
         </div>
         <button class="secondary-button" data-action="menu">Menu</button>
       </div>
-      <div class="intermission-shell">
+      <div class="intermission-shell ${isReadyCheck ? "is-ready-check" : ""}">
         ${choiceHtml}
-        <section class="editor-tab" data-inventory-drop>
-          <p class="selected-copy">${message || selectedCopy}</p>
+        <section class="editor-tab ${isReadyCheck ? "is-ready-check" : ""}" data-inventory-drop>
+          ${isReadyCheck ? "" : `<p class="selected-copy">${message || selectedCopy}</p>`}
           ${renderTrackEditor(track, hiddenEditorUids, scrapChips)}
           ${renderInventory(track, hiddenEditorUids)}
-          ${renderChipTray(scrapChips)}
+          ${isReadyCheck ? "" : renderChipTray(scrapChips)}
         </section>
       </div>
       <div class="upgrade-actions">

@@ -1,6 +1,15 @@
 import { clamp } from "../utils/math.js";
 
 export function hexToRgb(hex) {
+  const rgbMatch = String(hex).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (rgbMatch) {
+    return {
+      r: Number(rgbMatch[1]),
+      g: Number(rgbMatch[2]),
+      b: Number(rgbMatch[3]),
+    };
+  }
+
   const clean = String(hex).replace("#", "");
   const value = Number.parseInt(clean.length === 3
     ? clean.split("").map((part) => part + part).join("")

@@ -15,6 +15,7 @@ import {
   findElapseTarget,
   hitClosestInLaneDetailed,
   knockEnemyBack,
+  PROJECTILE_END_Y,
   pushGuardEvent,
 } from "./combatPrimitives.js";
 import { toEnemyFrameIndex } from "./enemyFrameIndex.js";
@@ -176,7 +177,7 @@ export function resolvePairChipShot({
   const events = [];
   const amount = pairChipDamage(def.damage) * damageMultiplier;
   const hit = hitClosestInLaneDetailed(enemyIndex, lane, amount, currentBeat, events);
-  addLaneProjectile(events, lane, def.color, true, hit.target?.y ?? 0.04, 5);
+  addLaneProjectile(events, lane, def.color, true, hit.target?.y ?? PROJECTILE_END_Y, 5);
   return events;
 }
 
@@ -335,6 +336,13 @@ export function resolveElapseFinish({
   if (chipSummary.shellKnockback > 0 && hit.damageTarget && !hit.result?.passedThrough) {
     knockEnemyBack(hit.target ?? hit.damageTarget, chipSummary.shellKnockback);
   }
-  addLaneProjectile(events, lane, weak ? "#a86674" : def.color, weak, hit.target?.y ?? 0.04, weak ? 4 : 12);
+  addLaneProjectile(
+    events,
+    lane,
+    weak ? "#a86674" : def.color,
+    weak,
+    hit.target?.y ?? PROJECTILE_END_Y,
+    weak ? 4 : 12,
+  );
   return events;
 }

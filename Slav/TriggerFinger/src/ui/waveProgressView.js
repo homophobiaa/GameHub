@@ -52,7 +52,8 @@ export function updateWaveProgressView({
   el.classList.toggle("is-complete-flash", flashTtl > 0);
 
   if (el.dataset.stamp === contentStamp) {
-    const fill = el.querySelector("[data-progress-fill]");
+    const fill = el._progressFill ?? el.querySelector("[data-progress-fill]");
+    el._progressFill = fill;
     if (fill) {
       fill.style.width = `${ratio * 100}%`;
     }
@@ -73,6 +74,7 @@ export function updateWaveProgressView({
       <small>${detail}</small>
     </div>
   `;
+  el._progressFill = el.querySelector("[data-progress-fill]");
 
   return nextVisualProgress;
 }

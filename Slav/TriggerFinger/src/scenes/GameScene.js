@@ -8,7 +8,7 @@ import {
 } from "../defs/bullets.js";
 import { CHIP_TUNING } from "../defs/chips.js";
 import { getAspectForSource } from "../defs/aspects.js";
-import { getEnemyDef } from "../defs/enemies.js";
+import { ENEMY_KILL_SCORE, getEnemyDef } from "../defs/enemies.js";
 import { BeatTrack } from "../systems/track.js";
 import {
   applyEnemyBeatEffects,
@@ -16,6 +16,7 @@ import {
   getEnemySpeedMultipliers,
   getLaneSpeedBoosts,
   pickAspectSpreadTargets,
+  updateCheerLeadStates,
   updateLeapEnemy,
 } from "../systems/enemyRuntime.js";
 import {
@@ -32,13 +33,21 @@ import { applyUpgradeChoice, createStoreOffer } from "../systems/upgrades.js";
 import { createWoeChoices, shouldOfferWoe } from "../systems/woeDraft.js";
 import { getDamageMultiplier, rateTiming } from "../systems/timing.js";
 import { createEnemyFrameIndex } from "../systems/enemyFrameIndex.js";
+import { knockEnemyBack } from "../systems/combatPrimitives.js";
+import {
+  placeEnemyAtLaneBack,
+  resolveEnemyLaneSpacing,
+  updateEnemyKnockbacks,
+} from "../systems/enemyCollision.js";
 import {
   BEAT_BURST_SECONDS,
   BEAT_FLASH_SECONDS,
   ASPECT_SPREAD_TARGET_COUNT,
   ENEMY_BREACH_Y,
   GOOD_WINDOW_BEATS,
-  STARTING_HEALTH,
+  PROJECTILE_END_Y,
+  SHOCKWAVE_MIN_Y,
+  STARTING_PLATING,
   TRACK_WAVE_START_LEAD_BEATS,
 } from "../config/gameplay.js";
 import { GameRenderer } from "../render/GameRenderer.js";
@@ -67,6 +76,7 @@ const LANE_KEYS = new Map([
 const WAVE_CLEAR_OUTRO_SECONDS = 0.85;
 const WAVE_PROGRESS_FLASH_SECONDS = 0.5;
 const BEAT_BAR_WINDDOWN_SECONDS = 0.7;
+const ENEMY_DEATH_PUFF_SECONDS = 0.34;
 
 export class GameScene {
   constructor({ manager, props = {} }) {
@@ -82,13 +92,16 @@ export class GameScene {
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
     this.activeElapse = null;
+    this.frameEnemyIndex = null;
     this.beat = 0;
     this.runSeconds = 0;
     this.beatSeconds = 1;
     this.score = 0;
     this.combo = 0;
     this.comboCap = 1.5;
-    this.health = STARTING_HEALTH;
+    this.maxPlating = STARTING_PLATING;
+    this.plating = this.maxPlating;
+    this.maxShockwaves = 0;
     this.shockwaves = 0;
     this.waveIndex = 0;
     this.waveKills = 0;
@@ -116,6 +129,7 @@ export class GameScene {
     this.beatFlashKind = "";
     this.beatFlashTtl = 0;
     this.beatBursts = [];
+    this.beatBurstSerial = 0;
     this.beatBarView = null;
     this.dragProxy = null;
     this.dragSource = null;
@@ -139,7 +153,7 @@ export class GameScene {
         <div class="hud-item"><span class="hud-label">Wave</span><span class="hud-value" data-hud="wave">1</span></div>
         <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" data-hud="score">0</span></div>
         <div class="hud-item"><span class="hud-label">Combo</span><span class="hud-value" data-hud="combo">x1.00</span></div>
-        <div class="hud-item"><span class="hud-label">Health</span><span class="hud-value" data-hud="health">10</span></div>
+        <div class="hud-item"><span class="hud-label">Plating</span><span class="hud-value" data-hud="plating">5</span></div>
         <div class="hud-item"><span class="hud-label">Shock</span><span class="hud-value" data-hud="shockwaves">0</span></div>
         <div class="hud-item"><span class="hud-label">Next</span><span class="hud-value" data-hud="next">Stinger</span></div>
       </header>
@@ -262,7 +276,9 @@ export class GameScene {
         const runState = this.getRunState();
         applyUpgradeChoice(this.track, choice, runState);
         this.comboCap = runState.comboCap;
-        this.health = runState.health;
+        this.maxPlating = runState.maxPlating;
+        this.plating = runState.plating;
+        this.maxShockwaves = runState.maxShockwaves;
         this.shockwaves = runState.shockwaves;
         this.storePicks = Math.max(0, this.storePicks - 1);
         this.choices.splice(index, 1);
@@ -335,21 +351,23 @@ export class GameScene {
 
   onDragOver = (event) => {
     this.moveDragProxy(event);
-    const dropBeat = event.target.closest("[data-drop-beat]");
     const chipDrop = event.target.closest("[data-chip-drop-beat]");
     const whetstoneDrop = event.target.closest("[data-whetstone-drop]");
     const wreckerDrop = event.target.closest("[data-wrecker-drop]");
     const inventoryDrop = event.target.closest("[data-inventory-drop]");
     const isChipDrag = this.dragPayload?.kind === "chip";
-    this.updateDropHover(isChipDrag ? null : dropBeat);
+    const pieceDrop = isChipDrag ? null : this.getPieceDropTarget(event);
+    const isTimelineIntent = !isChipDrag && this.isPointerInsideTimeline(event);
+    this.updateDropHover(pieceDrop?.element ?? null);
     this.updateChipDropHover(isChipDrag ? chipDrop : null);
 
     if (
       (isChipDrag && (chipDrop || inventoryDrop || whetstoneDrop || wreckerDrop)) ||
-      (dropBeat && !isChipDrag) ||
+      pieceDrop ||
       (whetstoneDrop && this.canHonePiece(this.dragPayload?.uid)) ||
       (wreckerDrop && this.canWreckPiece(this.dragPayload?.uid)) ||
-      (inventoryDrop && !isChipDrag)
+      (inventoryDrop && !isChipDrag && !isTimelineIntent) ||
+      isTimelineIntent
     ) {
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
@@ -364,11 +382,11 @@ export class GameScene {
 
     event.preventDefault();
     const payload = JSON.parse(data);
-    const dropBeat = event.target.closest("[data-drop-beat]");
     const chipDrop = event.target.closest("[data-chip-drop-beat]");
     const whetstoneDrop = event.target.closest("[data-whetstone-drop]");
     const wreckerDrop = event.target.closest("[data-wrecker-drop]");
     const chipTrayDrop = event.target.closest("[data-chip-tray-drop]");
+    const pieceDrop = payload.kind === "piece" ? this.getPieceDropTarget(event, payload) : null;
 
     if (payload.kind === "chip") {
       if (chipDrop) {
@@ -419,10 +437,17 @@ export class GameScene {
       return;
     }
 
-    if (dropBeat) {
+    if (pieceDrop) {
       this.track.setSelected(payload.uid);
       this.endDragProxy();
-      this.placeSelectedAt(Number(dropBeat.dataset.dropBeat));
+      this.placeSelectedAt(pieceDrop.beat);
+      return;
+    }
+
+    if (this.isPointerInsideTimeline(event)) {
+      this.editorMessage = "Use a highlighted beat marker.";
+      this.endDragProxy();
+      this.showIntermission();
       return;
     }
 
@@ -446,6 +471,71 @@ export class GameScene {
   onDragEnd = () => {
     this.endDragProxy();
   };
+
+  isPointerInsideNode(event, node) {
+    if (!node) {
+      return false;
+    }
+
+    const rect = node.getBoundingClientRect();
+    return event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
+  }
+
+  isPointerInsideTimeline(event) {
+    return this.isPointerInsideNode(event, this.overlay?.querySelector(".timeline-body"));
+  }
+
+  findDropForBeat(beat) {
+    if (!Number.isFinite(beat)) {
+      return null;
+    }
+
+    return [...this.overlay.querySelectorAll("[data-drop-beat]")]
+      .find((drop) => Math.abs(Number(drop.dataset.dropBeat) - beat) < EPSILON) ?? null;
+  }
+
+  getPieceDropTarget(event, payload = this.dragPayload) {
+    const directDrop = event.target.closest("[data-drop-beat]");
+    if (directDrop) {
+      return {
+        element: directDrop,
+        beat: Number(directDrop.dataset.dropBeat),
+      };
+    }
+
+    if (payload?.kind !== "piece" || !this.isPointerInsideTimeline(event)) {
+      return null;
+    }
+
+    const hoveredPiece = event.target.closest("[data-piece-uid][data-piece-source]");
+    if (
+      payload.source === "track" &&
+      hoveredPiece?.dataset.pieceUid === payload.uid &&
+      hoveredPiece?.dataset.pieceSource === "track"
+    ) {
+      const beat = this.track.placements.find((placement) => placement.uid === payload.uid)?.beat;
+      return Number.isFinite(beat)
+        ? {
+            element: this.findDropForBeat(beat),
+            beat,
+          }
+        : null;
+    }
+
+    const coveredDrop = [...this.overlay.querySelectorAll("[data-drop-beat]")]
+      .find((drop) => this.isPointerInsideNode(event, drop));
+    if (coveredDrop) {
+      return {
+        element: coveredDrop,
+        beat: Number(coveredDrop.dataset.dropBeat),
+      };
+    }
+
+    return null;
+  }
 
   getTransparentDragImage() {
     if (!this.transparentDragImage) {
@@ -1038,7 +1128,7 @@ export class GameScene {
       return { ok: false, reason: "Quarter-beats only." };
     }
 
-    if (beat < 0 || beat >= this.track.cycleBeats - EPSILON) {
+    if (beat < 0 || beat > this.track.lastPlaceableBeat + EPSILON) {
       return { ok: false, reason: "Outside the track." };
     }
 
@@ -1128,7 +1218,11 @@ export class GameScene {
       const host = this.track.findPiece(chip.hostUid);
       const isHostOnTrack = host && this.track.isPieceOnTrack(host.uid);
       const domain = isHostOnTrack ? this.track.getDomain(host) : null;
+      const fitsTrack =
+        chip.beat >= -EPSILON &&
+        chip.beat <= this.track.lastPlaceableBeat + EPSILON;
       const fitsDomain = domain &&
+        fitsTrack &&
         domain.end - domain.start > EPSILON &&
         chip.beat >= domain.start - EPSILON &&
         chip.beat <= domain.end + EPSILON;
@@ -1461,6 +1555,7 @@ export class GameScene {
     this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
+    this.frameEnemyIndex = null;
     this.waveKills = 0;
     this.visualWaveProgress = 0;
     this.waveClearOutro = false;
@@ -1470,12 +1565,18 @@ export class GameScene {
     this.suppressBeatBullets = false;
     this.progressEl?.classList.remove("is-complete-flash");
     this.beatStrip?.classList.remove("is-winding-down");
+    this.resetWaveResources();
     this.prepareTrackForWaveStart();
     this.waveRunner.start(this.waveIndex, this.beat, {
       enemyPool: this.enemyPool,
       healthMultiplier: this.enemyHealthMultiplier(),
       aspectGrantors: this.aspectGrantors,
     });
+  }
+
+  resetWaveResources() {
+    this.plating = this.maxPlating;
+    this.shockwaves = this.maxShockwaves;
   }
 
   prepareTrackForWaveStart() {
@@ -1491,8 +1592,10 @@ export class GameScene {
     this.active = false;
     this.intermission = true;
     this.suppressBeatBullets = true;
+    const isOpeningReadyCheck = isFirst ||
+      (this.waveIndex === 0 && !this.pendingUpgrade && !this.pendingWoe && !this.storeOffer);
     this.intermissionView.renderIntermission({
-      isFirst,
+      isFirst: isOpeningReadyCheck,
       waveIndex: this.waveIndex,
       track: this.track,
       choices: this.choices,
@@ -1547,7 +1650,7 @@ export class GameScene {
 
     this.processBeatTicks();
     if (this.shouldUpdateWaves()) {
-      this.waveRunner.update(this.beat, (enemy) => this.enemies.push(enemy), this.enemies, {
+      this.waveRunner.update(this.beat, (enemy) => this.spawnEnemy(enemy), this.enemies, {
         currentSecond: this.runSeconds,
       });
     }
@@ -1559,12 +1662,13 @@ export class GameScene {
     this.processPendingPiercingImpacts();
     this.removeDeadEnemies();
     this.processPendingAspectSpreads();
+    this.frameEnemyIndex = createEnemyFrameIndex(this.enemies);
 
-    if (this.health <= 0) {
+    if (this.plating <= 0) {
       this.endRun();
     }
 
-    if (this.waveRunner.isComplete(this.enemies) && !this.waveClearOutro) {
+    if (this.waveRunner.isComplete(this.frameEnemyIndex) && !this.waveClearOutro) {
       this.beginWaveClearOutro();
     }
   }
@@ -1594,6 +1698,12 @@ export class GameScene {
     return true;
   }
 
+  spawnEnemy(enemy) {
+    placeEnemyAtLaneBack(enemy, this.enemies);
+    this.enemies.push(enemy);
+    resolveEnemyLaneSpacing(this.enemies);
+  }
+
   areEnemiesPaused() {
     return false;
   }
@@ -1610,11 +1720,11 @@ export class GameScene {
     this.shockwaves -= 1;
     const knockback = getBulletDef("shell").knockback;
     this.enemies.forEach((enemy) => {
-      if (enemy.hp <= 0 || enemy.targetable === false) {
+      if (enemy.hp <= 0 || enemy.targetable === false || enemy.y < SHOCKWAVE_MIN_Y) {
         return;
       }
 
-      enemy.y = Math.max(0.05, enemy.y - knockback);
+      knockEnemyBack(enemy, knockback);
     });
     playShockwaveScreenEffect({
       screenEffects: this.screenEffects,
@@ -1636,6 +1746,7 @@ export class GameScene {
     this.active = false;
     this.activeElapse = null;
     this.combo = 0;
+    this.shockwaves = this.maxShockwaves;
     this.pendingChipShots = [];
     this.waveClearOutro = true;
     this.waveClearOutroTimer = WAVE_CLEAR_OUTRO_SECONDS;
@@ -1717,6 +1828,7 @@ export class GameScene {
   }
 
   updateEnemies(dt, enemyIndex = createEnemyFrameIndex(this.enemies)) {
+    updateCheerLeadStates(enemyIndex);
     const laneBoosts = [1, 1, 1];
     getLaneSpeedBoosts(enemyIndex).forEach((boost) => {
       laneBoosts[boost.lane] = boost.amount;
@@ -1749,12 +1861,22 @@ export class GameScene {
         (speedMultipliers.get(enemy.id) ?? 1) *
         elapseSlow *
         movementDt;
+    });
+
+    updateEnemyKnockbacks(this.enemies, movementDt);
+    resolveEnemyLaneSpacing(this.enemies);
+
+    this.enemies.forEach((enemy) => {
+      if (enemy.hp <= 0) {
+        return;
+      }
+
       enemy.visualY ??= enemy.y;
       enemy.visualY += (enemy.y - enemy.visualY) * Math.min(1, dt * 9);
       if (enemy.y >= ENEMY_BREACH_Y) {
         enemy.hp = 0;
         if (this.canTakeDamage()) {
-          this.health -= 1;
+          this.plating -= 1;
           this.triggerShockwave();
         }
         this.floaters.push({
@@ -1787,6 +1909,9 @@ export class GameScene {
       if (enemy.flashTtl > 0) {
         enemy.flashTtl = Math.max(0, enemy.flashTtl - dt);
       }
+      if (enemy.cheerStateTtl > 0) {
+        enemy.cheerStateTtl = Math.max(0, enemy.cheerStateTtl - dt);
+      }
     });
     this.floaters = this.floaters
       .map((floater) => ({ ...floater, ttl: floater.ttl - dt, y: floater.y - dt * 0.08 }))
@@ -1796,15 +1921,31 @@ export class GameScene {
   removeDeadEnemies() {
     const killed = this.enemies.filter((enemy) => enemy.hp <= 0 && enemy.y < 1);
     killed.forEach((enemy) => {
+      this.addEnemyDeathPuff(enemy);
       this.spreadAspectFromDeath(enemy);
       if (!enemy.scored) {
         enemy.scored = true;
         this.waveKills += 1;
-        this.score += getEnemyDef(enemy.type).score;
+        this.score += ENEMY_KILL_SCORE;
       }
     });
 
     this.enemies = this.enemies.filter((enemy) => enemy.hp > 0);
+  }
+
+  addEnemyDeathPuff(enemy) {
+    const def = getEnemyDef(enemy.type);
+    this.effects.push({
+      kind: "deathPuff",
+      lane: enemy.lane,
+      laneOffset: enemy.visualLaneOffset ?? 0,
+      y: enemy.visualY ?? enemy.y,
+      color: def.color,
+      radius: enemy.type === "barrier" ? 25 : enemy.type === "leap" ? 23 : 21,
+      seed: enemy.id,
+      ttl: ENEMY_DEATH_PUFF_SECONDS,
+      duration: ENEMY_DEATH_PUFF_SECONDS,
+    });
   }
 
   spreadAspectFromDeath(enemy) {
@@ -1881,11 +2022,7 @@ export class GameScene {
   }
 
   finishShotProgress(shot) {
-    if (shot.shouldAdvance) {
-      this.track.advanceFromShot(shot.targetBeat);
-    } else {
-      this.track.registerBadShot(shot.targetBeat);
-    }
+    this.track.advanceFromShot(shot.targetBeat);
   }
 
   getElapseRightPlacement(entry) {
@@ -1907,7 +2044,7 @@ export class GameScene {
     return [{
       lane: this.activeElapse.lane,
       color: this.activeElapse.color,
-      targetY: target?.hp > 0 ? target.visualY ?? target.y : 0.04,
+      targetY: target?.hp > 0 ? target.visualY ?? target.y : PROJECTILE_END_Y,
     }];
   }
 
@@ -2001,7 +2138,7 @@ export class GameScene {
     });
 
     if (registerCurrentMiss) {
-      this.track.registerBadShot(missedTargetBeat);
+      this.track.advanceFromShot(missedTargetBeat);
     }
   }
 
@@ -2028,7 +2165,7 @@ export class GameScene {
           targetBeat,
           shouldAdvance: false,
         });
-        this.track.registerBadShot(targetBeat);
+        this.track.advanceFromShot(targetBeat);
         this.lastShotAt = this.beat;
         return;
       }
@@ -2042,7 +2179,7 @@ export class GameScene {
           targetBeat: shot.targetBeat,
           shouldAdvance: true,
         });
-        this.track.advanceFromShot(shot.targetBeat);
+        this.finishShotProgress(shot);
         this.lastShotAt = this.beat;
         return;
       }
@@ -2054,7 +2191,7 @@ export class GameScene {
         targetBeat: shot.targetBeat,
         shouldAdvance: false,
       });
-      this.track.registerBadShot(shot.targetBeat);
+      this.finishShotProgress(shot);
       this.lastShotAt = this.beat;
       return;
     }
@@ -2215,7 +2352,9 @@ export class GameScene {
   getRunState() {
     return {
       comboCap: this.comboCap,
-      health: this.health,
+      maxPlating: this.maxPlating,
+      plating: this.plating,
+      maxShockwaves: this.maxShockwaves,
       shockwaves: this.shockwaves,
     };
   }
@@ -2321,6 +2460,7 @@ export class GameScene {
     this.beatFlashKind = isCorrect ? "good" : "bad";
     this.beatFlashTtl = BEAT_FLASH_SECONDS;
     this.beatBursts.push({
+      id: this.beatBurstSerial += 1,
       offset: markerOffsetPercent(targetBeat - this.beat),
       color,
       isBeat: isOnBeat(targetBeat),
@@ -2400,6 +2540,7 @@ export class GameScene {
     this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
+    this.frameEnemyIndex = null;
     this.score += 260 + this.waveIndex * 40;
     this.waveIndex += 1;
     this.visualWaveProgress = 0;
@@ -2429,6 +2570,7 @@ export class GameScene {
     this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
+    this.frameEnemyIndex = null;
     this.intermissionView.renderGameOver(this.score, this.waveIndex);
   }
 
@@ -2437,12 +2579,19 @@ export class GameScene {
       return;
     }
 
-    this.hud.wave.textContent = `${this.waveIndex + 1}`;
-    this.hud.score.textContent = `${Math.round(this.score)}`;
-    this.hud.combo.textContent = `x${this.damageMultiplier().toFixed(2)}`;
-    this.hud.health.textContent = `${Math.max(0, this.health)}`;
-    this.hud.shockwaves.textContent = `${this.shockwaves}`;
-    this.hud.next.textContent = this.track.currentEntry?.name ?? "";
+    this.setHudText("wave", `${this.waveIndex + 1}`);
+    this.setHudText("score", `${Math.round(this.score)}`);
+    this.setHudText("combo", `x${this.damageMultiplier().toFixed(2)}`);
+    this.setHudText("plating", `${Math.max(0, this.plating)}`);
+    this.setHudText("shockwaves", `${this.shockwaves}`);
+    this.setHudText("next", this.track.currentEntry?.name ?? "");
+  }
+
+  setHudText(key, value) {
+    const node = this.hud[key];
+    if (node && node.textContent !== value) {
+      node.textContent = value;
+    }
   }
 
   updateBeatIndicator() {
@@ -2472,7 +2621,9 @@ export class GameScene {
   }
 
   render() {
-    const enemyIndex = createEnemyFrameIndex(this.enemies);
+    const enemyIndex = this.frameEnemyIndex?.enemies === this.enemies
+      ? this.frameEnemyIndex
+      : createEnemyFrameIndex(this.enemies);
     this.renderer?.render({
       enemies: this.enemies,
       effects: this.effects,
@@ -2484,6 +2635,9 @@ export class GameScene {
       activeBeams: this.getElapseBeamView(),
       comboMultiplier: this.damageMultiplier(),
       comboCap: this.comboCap,
+      suppressBeatBullets: this.suppressBeatBullets,
+      beatFlashTtl: this.beatFlashTtl,
+      beatFlashKind: this.beatFlashKind,
     });
   }
 

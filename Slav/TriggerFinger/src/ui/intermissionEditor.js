@@ -216,7 +216,7 @@ function renderElapseInventoryCard(track, pieces, unavailableUids = new Set()) {
       extraClasses: elapseClasses(piece),
       domainMetrics: getTimelineDomainMetrics(
         track.getDomain(piece, 0.5),
-        track.cycleBeats,
+        track,
         0.5,
       ),
     });
@@ -244,7 +244,7 @@ function renderElapseInventoryCard(track, pieces, unavailableUids = new Set()) {
 
 function getQuarterBeatMarks(track) {
   const marks = [];
-  for (let beat = 0; beat < track.cycleBeats - EPSILON; beat += QUARTER_BEAT) {
+  for (let beat = 0; beat <= track.lastPlaceableBeat + EPSILON; beat += QUARTER_BEAT) {
     marks.push(Number(beat.toFixed(2)));
   }
 
@@ -259,7 +259,7 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
     .getTimelineMarks()
     .map(
       (mark) => `
-        <span class="timeline-mark ${mark.isBeat ? "is-beat" : "is-off"}" style="left:${timelineLeft(mark.beat, track.cycleBeats)}%">
+        <span class="timeline-mark ${mark.isBeat ? "is-beat" : "is-off"}" style="left:${timelineLeft(mark.beat, track)}%">
           ${mark.isBeat ? `<span>${mark.beat}</span>` : ""}
         </span>
       `,
@@ -272,7 +272,7 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
       (mark) => `
         <button
           class="timeline-drop"
-          style="left:${timelineLeft(mark.beat, track.cycleBeats)}%"
+          style="left:${timelineLeft(mark.beat, track)}%"
           data-drop-beat="${mark.beat}"
           aria-label="Place at beat ${mark.beat}"
         ></button>
@@ -285,7 +285,7 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
       (beat) => `
         <button
           class="chip-timeline-drop"
-          style="left:${timelineLeft(beat, track.cycleBeats)}%"
+          style="left:${timelineLeft(beat, track)}%"
           data-chip-drop-beat="${beat}"
           aria-label="Place chip at beat ${beat}"
         ></button>
@@ -311,8 +311,8 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
         return "";
       }
 
-      const leftPercent = timelineLeft(left.position, track.cycleBeats);
-      const rightPercent = timelineLeft(right.position, track.cycleBeats);
+      const leftPercent = timelineLeft(left.position, track);
+      const rightPercent = timelineLeft(right.position, track);
       return `
         <span
           class="timeline-elapse-link ${left.elapseActive && right.elapseActive ? "" : "is-elapse-inactive"}"
@@ -324,8 +324,8 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
 
   const placements = placementViews
     .map((entry) => {
-      const bulletLeft = timelineLeft(entry.position, track.cycleBeats);
-      const domainMetrics = getTimelineDomainMetrics(entry.domain, track.cycleBeats, entry.position);
+      const bulletLeft = timelineLeft(entry.position, track);
+      const domainMetrics = getTimelineDomainMetrics(entry.domain, track, entry.position);
       const selected = entry.uid === track.selectedUid ? " is-selected" : "";
       const pieceClasses = [
         timingClass(entry.def),
@@ -370,7 +370,7 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
         <button
           class="scrap-chip-token timeline-chip"
           draggable="true"
-          style="left:${timelineLeft(chip.beat, track.cycleBeats)}%;--chip-color:${color};--piece-color:${color}"
+          style="left:${timelineLeft(chip.beat, track)}%;--chip-color:${color};--piece-color:${color}"
           data-chip-uid="${chip.uid}"
           data-chip-source="track"
           data-chip-host="${chip.hostUid}"
@@ -387,7 +387,7 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
     <div class="timeline-editor" data-timeline>
       <div class="timeline-head">
         <span>Track</span>
-        <span>${track.cycleBeats} beats</span>
+        <span>${track.slotSpanBeats} beats${track.marginLevel ? ` | margin +${track.marginLevel}` : ""}</span>
       </div>
       <div class="timeline-body">
         ${marks}
@@ -429,7 +429,7 @@ function renderInventory(track, unavailableUids = new Set()) {
 
           return renderBulletCard({
             piece,
-            domainMetrics: getTimelineDomainMetrics(track.getDomain(piece, 0), track.cycleBeats, 0),
+            domainMetrics: getTimelineDomainMetrics(track.getDomain(piece, 0), track, 0),
             onTrack: !inventoryIds.has(piece.uid) || unavailableUids.has(piece.uid),
           });
         })

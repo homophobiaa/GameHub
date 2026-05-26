@@ -54,6 +54,39 @@ button:active {
   transform: none;
 }
 
+@keyframes overlay-enter {
+  from {
+    background: rgba(13, 15, 20, 0);
+  }
+
+  to {
+    background: rgba(13, 15, 20, 0.82);
+  }
+}
+
+@keyframes panel-enter {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translateY(10px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-shell,
+  .tutorial-shell,
+  .upgrade-panel.is-entering,
+  .overlay.is-entering {
+    animation: none !important;
+  }
+}
+
 select,
 input {
   min-height: 38px;
@@ -80,6 +113,7 @@ input {
 .menu-shell,
 .tutorial-shell {
   width: min(760px, 100%);
+  animation: panel-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .game-title {
@@ -250,6 +284,18 @@ input {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.beat-converge {
+  z-index: 1;
+}
+
+.beat-bullet-overlay {
+  z-index: 2;
+}
+
+.beat-burst {
+  z-index: 3;
 }
 
 .beat-cylinder,
@@ -478,6 +524,10 @@ input {
   display: none;
 }
 
+.overlay.is-entering {
+  animation: overlay-enter 160ms ease-out both;
+}
+
 .upgrade-panel {
   width: min(1180px, 100%);
   max-height: min(820px, 92vh);
@@ -486,6 +536,10 @@ input {
   border-radius: 8px;
   background: var(--panel);
   padding: 18px;
+}
+
+.upgrade-panel.is-entering {
+  animation: panel-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .intermission-panel {
@@ -633,6 +687,28 @@ input {
   border-radius: 8px 8px 0 0;
   background: #171b22;
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.intermission-panel.is-ready-check {
+  width: min(860px, 100%);
+}
+
+.intermission-shell.is-ready-check {
+  justify-content: center;
+  align-content: center;
+  min-height: min(500px, 64vh);
+  grid-template-columns: minmax(0, 760px);
+  grid-template-rows: auto;
+  overflow: visible;
+}
+
+.editor-tab.is-ready-check {
+  align-self: center;
+  grid-column: 1;
+  grid-row: 1;
+  width: 100%;
+  border-radius: 8px;
+  box-shadow: none;
 }
 
 .timeline-editor,

@@ -1,10 +1,12 @@
 import { getAspectDef } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
-import { MIN_ENEMY_Y } from "../config/gameplay.js";
+import { MIN_ENEMY_Y, PROJECTILE_END_Y } from "../config/gameplay.js";
 import { isTargetable, toEnemyFrameIndex } from "./enemyFrameIndex.js";
+import { queueEnemyKnockback } from "./enemyCollision.js";
 
 export { MIN_ENEMY_Y };
 export { isTargetable };
+export { PROJECTILE_END_Y };
 
 export function laneEnemies(enemies, lane) {
   return toEnemyFrameIndex(enemies).targetableInLane(lane);
@@ -53,10 +55,17 @@ function findHeroProtector(enemies = [], target) {
   ) ?? null;
 }
 
-function getAspectDamageAmount(enemy, amount) {
+function getAspectDamageAmount(enemy, amount, { consume = false } = {}) {
   const aspect = getAspectDef(enemy.aspect);
-  if (aspect?.id === "gloom" && enemy.hp >= enemy.maxHp - 0.001) {
-    return amount * aspect.fullHealthDamageMultiplier;
+  if (
+    Number.isFinite(aspect?.firstHitDamageMultiplier) &&
+    !enemy.aspectFirstHitTaken
+  ) {
+    if (consume) {
+      enemy.aspectFirstHitTaken = true;
+    }
+
+    return amount * aspect.firstHitDamageMultiplier;
   }
 
   return amount;
@@ -73,6 +82,11 @@ export function applyDamage(enemy, amount, currentBeat, events, options = {}) {
 
   if (!options.ignoreGhost && enemy.ghostCharges > 0) {
     enemy.ghostCharges -= 1;
+    if (enemy.ghostCharges <= 0) {
+      enemy.flashTtl = Math.max(enemy.flashTtl ?? 0, 0.22);
+      enemy.flashDuration = 0.22;
+      enemy.flashColor = getEnemyDef(enemy.type).color;
+    }
     events.push({
       kind: "phase",
       lane: enemy.lane,
@@ -83,7 +97,7 @@ export function applyDamage(enemy, amount, currentBeat, events, options = {}) {
     return { damaged: false, passedThrough: true, killed: false };
   }
 
-  let finalAmount = getAspectDamageAmount(enemy, amount);
+  let finalAmount = getAspectDamageAmount(enemy, amount, { consume: true });
   if (!options.ignoreHero) {
     const hero = findHeroProtector(options.enemies, enemy);
     const aspect = getAspectDef(hero?.aspect);
@@ -256,6 +270,22 @@ function resolveImpactAmount(amount, context) {
   return typeof amount === "function" ? amount(context) : amount;
 }
 
+function appendUnusedPierceEndpoint(path, lane, hits, maxTargets) {
+  if (path.length === 0 || hits >= maxTargets) {
+    return path;
+  }
+
+  const lastPoint = path.at(-1);
+  return [
+    ...path,
+    {
+      lane,
+      y: PROJECTILE_END_Y,
+      secondary: lastPoint?.secondary,
+    },
+  ];
+}
+
 export function planHitLine(enemies, lane, amount, currentBeat, maxTargets = 1, options = {}) {
   const enemyIndex = toEnemyFrameIndex(enemies);
   let hits = 0;
@@ -344,7 +374,12 @@ export function planHitLine(enemies, lane, amount, currentBeat, maxTargets = 1, 
     }
   }
 
-  return { touched, hits, maxTargets, ...assignPiercingStages(path, impacts) };
+  return {
+    touched,
+    hits,
+    maxTargets,
+    ...assignPiercingStages(appendUnusedPierceEndpoint(path, lane, hits, maxTargets), impacts),
+  };
 }
 
 export function hitClosestInLaneDetailed(enemies, lane, amount, currentBeat, events) {
@@ -370,13 +405,13 @@ export function knockEnemyBack(enemy, amount) {
     return;
   }
 
-  enemy.y = Math.max(MIN_ENEMY_Y, enemy.y - amount);
+  queueEnemyKnockback(enemy, amount);
 }
 
 export function hitShellLine(enemies, lane, amount, knockback, currentBeat, events) {
   const enemyIndex = toEnemyFrameIndex(enemies);
   let remainingDamage = amount;
-  let endY = 0.04;
+  let endY = PROJECTILE_END_Y;
   const touched = new Set();
   const path = [];
   const interceptedBarrierIds = new Set();
@@ -388,7 +423,7 @@ export function hitShellLine(enemies, lane, amount, knockback, currentBeat, even
   while (remainingDamage > 0.01) {
     const target = laneEnemies(enemyIndex, lane).find((enemy) => !touched.has(enemy));
     if (!target) {
-      endY = 0.04;
+      endY = PROJECTILE_END_Y;
       break;
     }
 
@@ -433,11 +468,12 @@ export function hitShellLine(enemies, lane, amount, knockback, currentBeat, even
 export function planShellLine(enemies, lane, amount, knockback, currentBeat, options = {}) {
   const enemyIndex = toEnemyFrameIndex(enemies);
   let remainingDamage = amount;
-  let endY = 0.04;
+  let endY = PROJECTILE_END_Y;
   const touched = new Set();
   const path = [];
   const impacts = [];
   const interceptedBarrierIds = new Set();
+  let reachedLaneEnd = false;
 
   if (!Number.isFinite(remainingDamage) || remainingDamage <= 0) {
     return { endY, path, impacts, stageCount: 0 };
@@ -446,7 +482,8 @@ export function planShellLine(enemies, lane, amount, knockback, currentBeat, opt
   while (remainingDamage > 0.01) {
     const target = laneEnemies(enemyIndex, lane).find((enemy) => !touched.has(enemy));
     if (!target) {
-      endY = 0.04;
+      endY = PROJECTILE_END_Y;
+      reachedLaneEnd = true;
       break;
     }
 
@@ -578,7 +615,10 @@ export function planShellLine(enemies, lane, amount, knockback, currentBeat, opt
     remainingDamage = Math.max(0, remainingDamage - hpBefore);
   }
 
-  return { endY, ...assignPiercingStages(path, impacts) };
+  const visualPath = reachedLaneEnd && path.length > 0
+    ? [...path, { lane, y: PROJECTILE_END_Y, secondary: path.at(-1)?.secondary }]
+    : path;
+  return { endY, ...assignPiercingStages(visualPath, impacts) };
 }
 
 export function hitHorizontalBand(enemies, centerY, radius, amount, currentBeat, events) {
@@ -697,7 +737,7 @@ export function applyImpactEffectsToTarget({
   });
 }
 
-export function addLaneProjectile(events, lane, color, secondary = false, endY = 0.04, width = null) {
+export function addLaneProjectile(events, lane, color, secondary = false, endY = PROJECTILE_END_Y, width = null) {
   events.push({
     kind: "projectile",
     lane,
@@ -714,7 +754,7 @@ export function addPiercingProjectile(
   color,
   path,
   stageDelaySeconds,
-  endY = 0.04,
+  endY = PROJECTILE_END_Y,
   impacts = [],
   stageCount = null,
   secondary = false,

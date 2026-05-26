@@ -3,17 +3,15 @@ import { getEnemyDef } from "../defs/enemies.js";
 import {
   LANES,
   LEAP_FALLBACK_TARGET_Y,
-  LEAP_LANDING_OFFSET,
-  LEAP_MAX_LANDING_Y,
   LEAP_MIN_TARGET_Y,
 } from "../config/gameplay.js";
 import { clamp } from "../utils/math.js";
 import { pickRandom } from "../utils/random.js";
 import { isTargetable, toEnemyFrameIndex } from "./enemyFrameIndex.js";
+import { getLeapDestinationY, getLeapLandBeat } from "./leapMotion.js";
 
-function nextWholeBeatAfter(beat) {
-  return Math.floor(beat) + 1;
-}
+const CHEER_LEAD_JUMP = 0.022;
+const CHEER_STATE_FLASH_SECONDS = 0.22;
 
 function pushHealEffect(enemy, color, effects, floaters) {
   effects.push({
@@ -117,8 +115,19 @@ function readjustLeapArc(enemy, beat) {
   const leap = enemy.leap;
   leap.startY = enemy.y;
   leap.startBeat = beat;
-  leap.landBeat = nextWholeBeatAfter(Math.max(beat, leap.landBeat));
+  leap.landBeat = getLeapLandBeat(beat, leap.destinationY ?? leap.targetY);
   leap.arcSide *= -1;
+}
+
+function shortenLeapForCurrentTarget(enemy, beat) {
+  const leap = enemy.leap;
+  const targetY = Number.isFinite(leap.destinationY)
+    ? leap.destinationY
+    : leap.targetY;
+  const shortLandBeat = getLeapLandBeat(leap.startBeat, targetY);
+  if (shortLandBeat < leap.landBeat) {
+    leap.landBeat = Math.max(beat, shortLandBeat);
+  }
 }
 
 function setLeapTarget(enemy, target, beat) {
@@ -151,12 +160,9 @@ export function updateLeapEnemy(enemy, enemies, beat) {
   const target = enemyIndex.findById(leap.targetId);
 
   if (target?.hp > 0) {
-    if (target.y < LEAP_MIN_TARGET_Y) {
-      setLeapFallback(enemy, beat);
-    } else {
-      leap.targetY = target.y;
-      leap.destinationY = null;
-    }
+    leap.targetY = target.y;
+    leap.destinationY = null;
+    shortenLeapForCurrentTarget(enemy, beat);
   } else if (leap.targetId !== null) {
     const lastTargetY = target?.y ?? leap.targetY;
     if (Number.isFinite(lastTargetY)) {
@@ -173,7 +179,7 @@ export function updateLeapEnemy(enemy, enemies, beat) {
 
   const destinationY = Number.isFinite(leap.destinationY)
     ? leap.destinationY
-    : clamp((leap.targetY ?? LEAP_MIN_TARGET_Y) + LEAP_LANDING_OFFSET, LEAP_MIN_TARGET_Y, LEAP_MAX_LANDING_Y);
+    : getLeapDestinationY(leap.targetY);
   const progress = clamp(
     (beat - leap.startBeat) / Math.max(0.001, leap.landBeat - leap.startBeat),
     0,
@@ -212,6 +218,40 @@ export function getLaneSpeedBoosts(enemies) {
   }
 
   return boosts;
+}
+
+export function updateCheerLeadStates(enemies) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  const leadingCheerIds = new Set();
+
+  for (const lane of LANES) {
+    const front = enemyIndex.frontLiveInLane(lane);
+    if (front?.type === "cheer") {
+      leadingCheerIds.add(front.id);
+    }
+  }
+
+  enemyIndex.enemies.forEach((enemy) => {
+    if (enemy.type !== "cheer" || enemy.hp <= 0) {
+      return;
+    }
+
+    const isLeading = leadingCheerIds.has(enemy.id);
+    if (enemy.cheerLeading === isLeading) {
+      return;
+    }
+
+    if (isLeading && enemy.cheerLeading === false) {
+      enemy.y = clamp(enemy.y + CHEER_LEAD_JUMP, 0.02, 0.96);
+    }
+
+    enemy.cheerLeading = isLeading;
+    enemy.cheerStateTtl = CHEER_STATE_FLASH_SECONDS;
+    enemy.cheerStateDuration = CHEER_STATE_FLASH_SECONDS;
+    enemy.flashTtl = Math.max(enemy.flashTtl ?? 0, CHEER_STATE_FLASH_SECONDS);
+    enemy.flashDuration = CHEER_STATE_FLASH_SECONDS;
+    enemy.flashColor = getEnemyDef("cheer").color;
+  });
 }
 
 export function getEnemySpeedMultipliers(enemies) {
