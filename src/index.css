@@ -6,8 +6,22 @@
   color-scheme: dark;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
 body {
+  margin: 0;
   background-color: #040408;
   color: #f7f8f8;
   font-family: 'Inter', 'SF Pro Display', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -17,6 +31,13 @@ body {
 
 html {
   scroll-behavior: smooth;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
 }
 
 ::selection {
@@ -82,6 +103,19 @@ html {
   .text-balance {
     text-wrap: balance;
   }
+
+  .thumbnail-frame {
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+  }
+
+  .thumbnail-frame img,
+  .thumbnail-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
 }
 
 @layer utilities {
@@ -99,5 +133,52 @@ html {
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+}
+
+@media (max-width: 639px) {
+  body {
+    position: relative;
+  }
+
+  .heading-display {
+    overflow-wrap: break-word;
+  }
+
+  section,
+  main,
+  footer,
+  header,
+  nav {
+    max-width: 100%;
+  }
+
+  .glass-panel {
+    border-radius: 0.75rem;
+  }
+
+  .aurora-blob {
+    width: min(28rem, 115vw);
+    height: min(28rem, 115vw);
+  }
+
+  .hero-glow {
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 100%;
+    transform: none;
+  }
+
+  .card-shine {
+    display: none;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  a,
+  button,
+  [role='link'] {
+    -webkit-tap-highlight-color: transparent;
   }
 }

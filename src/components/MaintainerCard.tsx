@@ -68,7 +68,7 @@ export default function MaintainerCard() {
             style={{ backgroundSize: '40px 40px' }}
           />
 
-          <div className="relative p-8 sm:p-10 grid sm:grid-cols-[auto_1fr_auto] items-center gap-8">
+          <div className="relative p-5 sm:p-10 grid sm:grid-cols-[auto_1fr_auto] items-center gap-6 sm:gap-8">
             {/* Avatar */}
             <div className="relative">
               <div className="absolute -inset-2 rounded-full bg-gradient-to-br from-accent/40 to-accent-violet/40 blur-2xl" />
@@ -110,7 +110,7 @@ export default function MaintainerCard() {
             </div>
 
             {/* Actions */}
-            <div className="flex sm:flex-col items-stretch gap-2 sm:min-w-[180px]">
+            <div className="flex flex-col items-stretch gap-2 sm:min-w-[180px]">
               <a
                 href="https://github.com/homophobiaa"
                 target="_blank"

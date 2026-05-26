@@ -89,7 +89,7 @@ export default function AnimatedBackground() {
 
       {/* aurora blobs */}
       <motion.div
-        className="absolute -top-40 -left-40 h-[42rem] w-[42rem] rounded-full blur-3xl"
+        className="aurora-blob absolute -top-40 -left-40 h-[42rem] w-[42rem] rounded-full blur-3xl"
         style={{
           background:
             'radial-gradient(circle at center, rgba(124,140,255,0.35), rgba(124,140,255,0) 60%)',
@@ -98,7 +98,7 @@ export default function AnimatedBackground() {
         transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
       />
       <motion.div
-        className="absolute top-1/3 -right-32 h-[40rem] w-[40rem] rounded-full blur-3xl"
+        className="aurora-blob absolute top-1/3 -right-32 h-[40rem] w-[40rem] rounded-full blur-3xl"
         style={{
           background:
             'radial-gradient(circle at center, rgba(167,139,250,0.28), rgba(167,139,250,0) 60%)',
@@ -107,7 +107,7 @@ export default function AnimatedBackground() {
         transition={{ duration: 26, repeat: Infinity, ease: 'easeInOut' }}
       />
       <motion.div
-        className="absolute bottom-[-10rem] left-1/3 h-[36rem] w-[36rem] rounded-full blur-3xl"
+        className="aurora-blob absolute bottom-[-10rem] left-1/3 h-[36rem] w-[36rem] rounded-full blur-3xl"
         style={{
           background:
             'radial-gradient(circle at center, rgba(103,232,249,0.16), rgba(103,232,249,0) 60%)',

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Github, Sparkles, Users, ExternalLink, Gamepad2 } from 'lucide-react';
 import type { Game } from '../types/game';
 import { pfpPath } from '../types/game';
+import { useCanHover } from '../hooks/useCanHover';
 
 type Props = {
   games: Game[];
@@ -124,6 +125,7 @@ export default function ContributorsWall({ games }: Props) {
 
 function ContributorChip({ person, index }: { person: Person; index: number }) {
   const [hovered, setHovered] = useState(false);
+  const canHover = useCanHover();
   const hasGh = person.github.trim().length > 0;
   const hue = hashHue(person.name);
   const isTeam = !!person.teammate;
@@ -133,9 +135,13 @@ function ContributorChip({ person, index }: { person: Person; index: number }) {
       initial={{ opacity: 0, y: 14 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
-      onHoverStart={() => setHovered(true)}
+      onHoverStart={() => {
+        if (canHover) setHovered(true);
+      }}
       onHoverEnd={() => setHovered(false)}
-      onFocus={() => setHovered(true)}
+      onFocus={() => {
+        if (canHover) setHovered(true);
+      }}
       onBlur={() => setHovered(false)}
       animate={{ scale: hovered ? 1.04 : 1, y: hovered ? -4 : 0 }}
       transition={{ type: 'spring', stiffness: 240, damping: 22, delay: Math.min(index * 0.03, 0.3) }}

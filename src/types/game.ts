@@ -33,10 +33,10 @@ export const isExternalUrl = (url: string): boolean => /^https?:\/\//i.test(url)
 /** Resolves a profile-photo path under /pfp/ from a creator's name. */
 export const pfpPath = (name: string): string => {
   const slug = name.trim().toLowerCase().replace(/\s+/g, '-');
+  if (slug.includes('ivanzhela')) return '/pfp/ivanzhela.png';
   // Full filename overrides (when the on-disk name or extension differs from the slug).
   const fileOverrides: Record<string, string> = {
     boyan: 'boqn.jpg',
-    ivanzhela: 'ivanzhela.png',
   };
   const file = fileOverrides[slug] ?? `${slug}.jpg`;
   return `/pfp/${file}`;

@@ -37,7 +37,7 @@ export default function Navbar({ active, onNavigate }: Props) {
           : 'bg-transparent'
       }`}
     >
-      <nav className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
+      <nav className="mx-auto max-w-7xl px-4 sm:px-6 h-16 flex items-center justify-between">
         <button
           onClick={() => onNavigate('home')}
           className="flex items-center gap-2.5 group focus:outline-none"
@@ -118,7 +118,7 @@ export default function Navbar({ active, onNavigate }: Props) {
             exit={{ opacity: 0, height: 0 }}
             className="md:hidden border-t border-hairline bg-canvas-deep/90 backdrop-blur-xl overflow-hidden"
           >
-            <div className="px-6 py-4 flex flex-col gap-1">
+            <div className="px-4 sm:px-6 py-4 flex flex-col gap-1">
               {links.map((l) => (
                 <button
                   key={l.id}

@@ -32,7 +32,7 @@ export default function TeacherSpotlight({ teacher, extras }: Props) {
         <div className="pointer-events-none absolute -bottom-32 -right-32 h-72 w-72 rounded-full blur-3xl"
           style={{ background: 'radial-gradient(circle, rgba(124,140,255,0.18), transparent 60%)' }} />
 
-        <div className="relative p-7 sm:p-8 flex items-center gap-6">
+        <div className="relative p-5 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-5 sm:gap-6">
           <div className="relative shrink-0">
             <div className="absolute -inset-2 rounded-full bg-gradient-to-br from-amber-400/40 to-accent/40 blur-2xl" />
             <div className="relative h-24 w-24 rounded-full ring-2 ring-amber-300/40 bg-gradient-to-br from-amber-300 via-amber-500 to-accent grid place-items-center text-canvas-deep text-2xl font-bold overflow-hidden">

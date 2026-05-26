@@ -64,16 +64,16 @@ export default function App() {
         {/* HOME = compact intro + games library, all above the fold */}
         <section id="home" className="relative pt-24 sm:pt-28 pb-16 scroll-mt-20">
           {/* Ambient glow behind hero strip */}
-          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-16 -z-0">
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-16 -z-0 overflow-hidden">
             <motion.div
-              className="absolute left-1/2 -translate-x-1/2 h-72 w-[60rem] max-w-full rounded-full blur-3xl"
+              className="hero-glow absolute left-1/2 -translate-x-1/2 h-72 w-[60rem] max-w-full rounded-full blur-3xl"
               style={{ background: 'radial-gradient(ellipse, rgba(124,140,255,0.22), transparent 65%)' }}
               animate={{ x: ['-4%', '4%', '-4%'] }}
               transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
             />
           </div>
 
-          <div className="relative mx-auto max-w-7xl px-6">
+          <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
             {/* Compact intro strip */}
             <div className="grid lg:grid-cols-12 gap-6 lg:gap-10 items-end mb-10 sm:mb-12">
               <div className="lg:col-span-7">
@@ -97,7 +97,7 @@ export default function App() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.05 }}
-                  className="heading-display mt-4 text-3xl sm:text-4xl lg:text-5xl text-ink text-balance leading-tight"
+                  className="heading-display mt-4 max-w-full text-[1.8rem] sm:text-4xl lg:text-5xl text-ink text-balance leading-tight"
                 >
                   One hub. <span className="text-gradient">Every student game.</span>
                 </motion.h1>
@@ -106,7 +106,7 @@ export default function App() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.12 }}
-                  className="mt-3 text-sm sm:text-base text-ink-muted max-w-2xl leading-relaxed"
+                  className="mt-3 max-w-full text-sm sm:text-base text-ink-muted sm:max-w-2xl leading-relaxed"
                 >
                   The launcher for the SoftUni class showcase — every project lives, plays and ships in one polished place.
                 </motion.p>
@@ -148,13 +148,13 @@ export default function App() {
         </section>
 
         {/* Divider */}
-        <div className="mx-auto max-w-7xl px-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="h-px bg-gradient-to-r from-transparent via-hairline-strong to-transparent" />
         </div>
 
         {/* Built With */}
         <section className="py-20 sm:py-24">
-          <div className="mx-auto max-w-7xl px-6">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHeading
               eyebrow="Built With"
               title={<>Modern stack, <span className="text-gradient">crafted with care.</span></>}
@@ -167,13 +167,13 @@ export default function App() {
         </section>
 
         {/* Divider */}
-        <div className="mx-auto max-w-7xl px-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="h-px bg-gradient-to-r from-transparent via-hairline-strong to-transparent" />
         </div>
 
         {/* Team / Credits */}
         <section id="team" className="scroll-mt-20 py-20 sm:py-24">
-          <div className="mx-auto max-w-7xl px-6">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHeading
               eyebrow="Credits"
               title={<>Led, designed and shipped <span className="text-gradient">with care.</span></>}
@@ -210,7 +210,7 @@ function StatChip({ icon, value, label }: { icon: React.ReactNode; value: string
 function Footer() {
   return (
     <footer className="border-t border-hairline mt-10">
-      <div className="mx-auto max-w-7xl px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
         <div className="flex items-center gap-3">
           <div className="relative h-9 w-9 rounded-xl bg-canvas-deep grid place-items-center overflow-hidden ring-1 ring-hairline-strong">
             <div className="absolute inset-0 bg-gradient-to-br from-accent/30 via-accent-violet/20 to-transparent" />

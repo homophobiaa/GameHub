@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { Github, Play, GitBranch, ImageOff, ExternalLink, Lock } from 'lucide-react';
 import type { Game } from '../types/game';
 import { pfpPath } from '../types/game';
+import { useCanHover } from '../hooks/useCanHover';
 
 type Props = {
   game: Game;
@@ -42,7 +43,9 @@ function openGame(url: string) {
 
 export default function GameCard({ game, index }: Props) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const canHover = useCanHover();
   const [imgFailed, setImgFailed] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [pos, setPos] = useState({ x: 50, y: 50 });
 
   const rx = useMotionValue(0);
@@ -56,9 +59,35 @@ export default function GameCard({ game, index }: Props) {
   const githubUrl = hasGithub ? `https://github.com/${game.creatorGithub}` : undefined;
   const isPlayable = !!(game.playUrl && game.playUrl !== '#');
 
+  const clearHover = useCallback(() => {
+    setHovered(false);
+    setPos({ x: 50, y: 50 });
+    rx.set(0);
+    ry.set(0);
+    cardRef.current?.blur();
+  }, [rx, ry]);
+
+  useEffect(() => {
+    window.addEventListener('blur', clearHover);
+    window.addEventListener('focus', clearHover);
+    document.addEventListener('visibilitychange', clearHover);
+
+    return () => {
+      window.removeEventListener('blur', clearHover);
+      window.removeEventListener('focus', clearHover);
+      document.removeEventListener('visibilitychange', clearHover);
+    };
+  }, [clearHover]);
+
+  const onEnter = () => {
+    if (canHover) setHovered(true);
+  };
+
   const onMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (!canHover) return;
     const el = cardRef.current;
     if (!el) return;
+    setHovered(true);
     const rect = el.getBoundingClientRect();
     const px = (e.clientX - rect.left) / rect.width;
     const py = (e.clientY - rect.top) / rect.height;
@@ -67,17 +96,20 @@ export default function GameCard({ game, index }: Props) {
     rx.set(-(py - 0.5) * 6);
   };
   const onLeave = () => {
-    rx.set(0);
-    ry.set(0);
+    clearHover();
   };
 
-  const onCardClick = () => {
+  const onCardClick = (e: MouseEvent<HTMLDivElement>) => {
+    clearHover();
+    e.currentTarget.blur();
     if (isPlayable) openGame(game.playUrl);
   };
   const onCardKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!isPlayable) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
+      clearHover();
+      e.currentTarget.blur();
       openGame(game.playUrl);
     }
   };
@@ -92,34 +124,36 @@ export default function GameCard({ game, index }: Props) {
       aria-label={isPlayable ? `Play ${game.name}` : `${game.name} (coming soon)`}
       onClick={onCardClick}
       onKeyDown={onCardKey}
+      data-hovered={hovered ? 'true' : 'false'}
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.45, delay: Math.min(index * 0.04, 0.32), ease: 'easeOut' }}
+      onMouseEnter={onEnter}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
       style={{ rotateX, rotateY, transformPerspective: 1000 }}
       className={`group relative overflow-hidden rounded-xl border border-hairline bg-surface-1
         transition-[border-color,box-shadow,transform] duration-300
-        hover:border-hairline-strong hover:shadow-[0_20px_50px_-22px_rgba(124,140,255,0.55)]
+        data-[hovered=true]:border-hairline-strong data-[hovered=true]:shadow-[0_20px_50px_-22px_rgba(124,140,255,0.55)]
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas-deep
         will-change-transform flex flex-col ${isPlayable ? 'cursor-pointer' : 'cursor-default'}`}
     >
       {/* Shine sweep */}
       <div
-        className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-[1100ms] ease-out z-20"
+        className="card-shine pointer-events-none absolute inset-0 -translate-x-full group-data-[hovered=true]:translate-x-full transition-transform duration-[1100ms] ease-out z-20"
         style={{ background: 'linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.06) 50%, transparent 70%)' }}
       />
 
       {/* === 16:9 Thumbnail === */}
-      <div className="relative w-full aspect-video overflow-hidden border-b border-hairline bg-canvas-deep">
+      <div className="thumbnail-frame relative w-full overflow-hidden border-b border-hairline bg-canvas-deep">
         {!imgFailed && game.screenshot ? (
           <img
             src={game.screenshot}
             alt={`${game.name} screenshot`}
             loading="lazy"
             onError={() => setImgFailed(true)}
-            className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.06]"
+            className="thumbnail-image transition-transform duration-700 group-data-[hovered=true]:scale-[1.06]"
           />
         ) : (
           <ScreenshotFallback name={game.creator} />
@@ -130,7 +164,7 @@ export default function GameCard({ game, index }: Props) {
 
         {/* Cursor spotlight only on thumb */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+          className="pointer-events-none absolute inset-0 opacity-0 group-data-[hovered=true]:opacity-100 transition-opacity duration-300"
           style={{
             background: `radial-gradient(280px circle at ${pos.x}% ${pos.y}%, rgba(124,140,255,0.20), transparent 55%)`,
           }}
@@ -154,7 +188,7 @@ export default function GameCard({ game, index }: Props) {
 
         {/* Floating play CTA on hover */}
         {isPlayable && (
-          <div className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <div className="absolute inset-0 grid place-items-center opacity-0 group-data-[hovered=true]:opacity-100 transition-opacity duration-300">
             <div className="h-14 w-14 rounded-full bg-accent text-canvas-deep grid place-items-center shadow-[0_12px_36px_-8px_rgba(124,140,255,0.85)] ring-2 ring-white/20">
               <Play className="h-6 w-6 fill-current translate-x-0.5" />
             </div>
@@ -181,8 +215,8 @@ export default function GameCard({ game, index }: Props) {
           {isPlayable ? (
             <span
               aria-hidden
-              className="shrink-0 h-9 w-9 rounded-full bg-accent/90 group-hover:bg-accent grid place-items-center text-canvas-deep
-                shadow-[0_8px_24px_-8px_rgba(124,140,255,0.85)] transition-transform group-hover:scale-105"
+              className="shrink-0 h-9 w-9 rounded-full bg-accent/90 group-data-[hovered=true]:bg-accent grid place-items-center text-canvas-deep
+                shadow-[0_8px_24px_-8px_rgba(124,140,255,0.85)] transition-transform group-data-[hovered=true]:scale-105"
               title="Play"
             >
               <Play className="h-4 w-4 fill-current translate-x-[1px]" />
@@ -200,11 +234,11 @@ export default function GameCard({ game, index }: Props) {
 
         {/* Hover/focus reveal */}
         <div
-          className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] group-focus-within:grid-rows-[1fr]
+          className="grid grid-rows-[0fr] group-data-[hovered=true]:grid-rows-[1fr] group-focus-within:grid-rows-[1fr]
             transition-[grid-template-rows] duration-300 ease-out"
         >
           <div className="overflow-hidden">
-            <div className="pt-3 border-t border-hairline/70 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300">
+            <div className="pt-3 border-t border-hairline/70 opacity-0 group-data-[hovered=true]:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300">
               <p className="text-[12.5px] leading-relaxed text-ink-subtle line-clamp-3">
                 {game.description}
               </p>
@@ -255,7 +289,7 @@ export default function GameCard({ game, index }: Props) {
                 {isPlayable && (
                   <span
                     aria-hidden
-                    className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-accent/90 group-hover:bg-accent text-canvas-deep px-2.5 py-1.5 text-[11px] font-semibold transition-colors"
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-accent/90 group-data-[hovered=true]:bg-accent text-canvas-deep px-2.5 py-1.5 text-[11px] font-semibold transition-colors"
                   >
                     <Play className="h-3.5 w-3.5 fill-current" />
                     Play
@@ -284,11 +318,11 @@ function CreatorAvatar({ game }: { game: Game }) {
 
   // Stacked: overlapping with ring so the overlap looks intentional.
   return (
-    <div className="flex shrink-0 -space-x-3 group-hover:-space-x-2 transition-[margin] duration-300">
+    <div className="flex shrink-0 -space-x-3 group-data-[hovered=true]:-space-x-2 transition-[margin] duration-300">
       {all.map((p, i) => (
         <div
           key={p.github || p.name}
-          className="rounded-full ring-2 ring-surface-1 group-hover:ring-accent/40 transition-[box-shadow,ring-color] duration-300 shadow-[0_4px_14px_-6px_rgba(124,140,255,0.7)]"
+          className="rounded-full ring-2 ring-surface-1 group-data-[hovered=true]:ring-accent/40 transition-[box-shadow,ring-color] duration-300 shadow-[0_4px_14px_-6px_rgba(124,140,255,0.7)]"
           style={{ zIndex: all.length - i }}
         >
           <PfpImage name={p.name} size={40} />
