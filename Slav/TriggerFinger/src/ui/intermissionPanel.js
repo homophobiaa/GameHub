@@ -1,5 +1,5 @@
 import { getBulletDef, getElapseHalf, getSlotColor, getSlotName, isElapsePiece } from "../defs/bullets.js";
-import { CHIP_TUNING } from "../defs/chips.js";
+import { CHIP_TUNING, getChunkCountForSource } from "../defs/chips.js";
 import { getEnemyDef } from "../defs/enemies.js";
 import {
   elapseClasses,
@@ -180,8 +180,9 @@ export function renderWreckerSlot(track, disabled, wreckerCandidateUid = null) {
     ? track.getGroupPieces(candidate.groupId).length
     : 1;
   const canWreckCandidate = Boolean(candidate && !disabled && track.allPieces.length - groupSize > 0);
+  const chunkCount = candidate ? getChunkCountForSource(candidate.id) : CHIP_TUNING.chipsPerScrap;
   const description = candidateDef
-    ? `scraps into ${CHIP_TUNING.chipsPerScrap} chips that can give its effect to another bullet.`
+    ? `scraps into ${chunkCount} chunk${chunkCount === 1 ? "" : "s"} that can give its effect to another bullet.`
     : `${scrappableCount > 0 ? `${scrappableCount} bullet${scrappableCount === 1 ? "" : "s"} can be scrapped` : "Need at least one bullet left after scrapping"}`;
 
   return `
@@ -217,8 +218,8 @@ function renderScrapChip(chip) {
       style="--chip-color:${chip.color};--piece-color:${chip.color}"
       data-chip-uid="${chip.uid}"
       data-chip-source="inventory"
-      aria-label="Drag ${escapeHtml(chip.sourceName)} chip"
-      title="${escapeHtml(chip.sourceName)} chip"
+      aria-label="Drag ${escapeHtml(chip.sourceName)} chunk"
+      title="${escapeHtml(chip.sourceName)} chunk"
     >
       <span class="scrap-chip-body"></span>
     </button>
@@ -229,13 +230,13 @@ function renderChipTray(scrapChips = []) {
   return `
     <div class="scrap-chip-tray">
       <div class="timeline-head">
-        <span>Chips</span>
+        <span>Chunks</span>
         <span>inert fragments</span>
       </div>
       <div class="scrap-chip-slot" data-chip-tray-drop>
         ${scrapChips.filter((chip) => !chip.hostUid).length
           ? scrapChips.filter((chip) => !chip.hostUid).map(renderScrapChip).join("")
-          : `<p class="scrap-chip-empty">Scrap bullets at the Wrecker to collect chips.</p>`}
+          : `<p class="scrap-chip-empty">Scrap bullets at the Wrecker to collect chunks.</p>`}
       </div>
     </div>
   `;

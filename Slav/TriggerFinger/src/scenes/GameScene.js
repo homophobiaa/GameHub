@@ -3,10 +3,16 @@ import {
   getBulletDef,
   getElapseHalf,
   getSlotColor,
+  getSlotFollowBeats,
   getSlotName,
   isElapsePiece,
 } from "../defs/bullets.js";
-import { CHIP_TUNING } from "../defs/chips.js";
+import {
+  CHIP_CORNERS,
+  CHIP_CORNER_LABELS,
+  CHIP_TUNING,
+  getChunkCountForSource,
+} from "../defs/chips.js";
 import { getAspectForSource } from "../defs/aspects.js";
 import { ENEMY_KILL_SCORE, getEnemyDef } from "../defs/enemies.js";
 import { BeatTrack } from "../systems/track.js";
@@ -35,9 +41,11 @@ import { getDamageMultiplier, rateTiming } from "../systems/timing.js";
 import { createEnemyFrameIndex } from "../systems/enemyFrameIndex.js";
 import { knockEnemyBack } from "../systems/combatPrimitives.js";
 import {
+  KNOCKBACK_SIMULATION_STEP_SECONDS,
   placeEnemyAtLaneBack,
   resolveEnemyLaneSpacing,
   updateEnemyKnockbacks,
+  updateKnockbackRecoverySpeedMultiplier,
 } from "../systems/enemyCollision.js";
 import {
   BEAT_BURST_SECONDS,
@@ -55,9 +63,8 @@ import { BeatBarView, markerOffsetPercent } from "../ui/beatBarView.js";
 import { appendCombatEvents } from "../ui/combatEventView.js";
 import { IntermissionView } from "../ui/intermissionView.js";
 import { playShockwaveScreenEffect } from "../ui/screenEffects.js";
-import { DOMAIN_EDGE_VISUAL_GAP } from "../ui/timelineMetrics.js";
 import { updateWaveProgressView } from "../ui/waveProgressView.js";
-import { EPSILON, isOnBeat, nextHalfBeatAfter, snapToQuarterBeat } from "../utils/beatMath.js";
+import { EPSILON, isOnBeat, nextHalfBeatAfter } from "../utils/beatMath.js";
 import { clamp } from "../utils/math.js";
 import { MenuScene } from "./MenuScene.js";
 
@@ -76,6 +83,7 @@ const LANE_KEYS = new Map([
 const WAVE_CLEAR_OUTRO_SECONDS = 0.85;
 const WAVE_PROGRESS_FLASH_SECONDS = 0.5;
 const BEAT_BAR_WINDDOWN_SECONDS = 0.7;
+const CHIP_CORNER_SET = new Set(CHIP_CORNERS);
 const ENEMY_DEATH_PUFF_SECONDS = 0.34;
 const RESOURCE_FLASH_SECONDS = 0.36;
 const RESOURCE_RECENTER_SECONDS = 0.24;
@@ -84,6 +92,9 @@ const PLATING_FINISH_CLEAR_DELAY_SECONDS = 0.45;
 const PLATING_FINISH_OUTRO_EXTRA_SECONDS = 0.35;
 const PLATING_FINISH_COLOR = "#d9e2ef";
 const PLATING_FINISH_SPECIAL_GRACE_SECONDS = 1.0;
+const PLATING_IMPACT_SECONDS = 0.32;
+const PLATING_IMPACT_RADIUS = 10;
+const PLATING_IMPACT_GROWTH = 54;
 
 export class GameScene {
   constructor({ manager, props = {} }) {
@@ -105,6 +116,7 @@ export class GameScene {
     this.platingFinisherDelayUntil = -Infinity;
     this.activeElapse = null;
     this.frameEnemyIndex = null;
+    this.knockbackStepAccumulator = 0;
     this.beat = 0;
     this.runSeconds = 0;
     this.beatSeconds = 1;
@@ -372,7 +384,7 @@ export class GameScene {
 
   onDragOver = (event) => {
     this.moveDragProxy(event);
-    const chipDrop = event.target.closest("[data-chip-drop-beat]");
+    const chipDrop = event.target.closest("[data-chip-drop-host][data-chip-drop-corner]");
     const whetstoneDrop = event.target.closest("[data-whetstone-drop]");
     const wreckerDrop = event.target.closest("[data-wrecker-drop]");
     const inventoryDrop = event.target.closest("[data-inventory-drop]");
@@ -383,7 +395,7 @@ export class GameScene {
     this.updateChipDropHover(isChipDrag ? chipDrop : null);
 
     if (
-      (isChipDrag && (chipDrop || inventoryDrop || whetstoneDrop || wreckerDrop)) ||
+      (isChipDrag && (chipDrop || inventoryDrop)) ||
       pieceDrop ||
       (whetstoneDrop && this.canHonePiece(this.dragPayload?.uid)) ||
       (wreckerDrop && this.canWreckPiece(this.dragPayload?.uid)) ||
@@ -403,7 +415,7 @@ export class GameScene {
 
     event.preventDefault();
     const payload = JSON.parse(data);
-    const chipDrop = event.target.closest("[data-chip-drop-beat]");
+    const chipDrop = event.target.closest("[data-chip-drop-host][data-chip-drop-corner]");
     const whetstoneDrop = event.target.closest("[data-whetstone-drop]");
     const wreckerDrop = event.target.closest("[data-wrecker-drop]");
     const chipTrayDrop = event.target.closest("[data-chip-tray-drop]");
@@ -412,7 +424,11 @@ export class GameScene {
     if (payload.kind === "chip") {
       if (chipDrop) {
         this.endDragProxy();
-        this.placeChipAt(payload.chipUid, Number(chipDrop.dataset.chipDropBeat));
+        this.placeChipAt(
+          payload.chipUid,
+          chipDrop.dataset.chipDropHost,
+          chipDrop.dataset.chipDropCorner,
+        );
         return;
       }
 
@@ -420,15 +436,15 @@ export class GameScene {
         const didReturn = this.returnChipToTray(payload.chipUid);
         if (didReturn) {
           this.editorMessage = chipTrayDrop
-            ? "Chip returned to the tray."
-            : "Chip returned with the inventory.";
+            ? "Chunk returned to the tray."
+            : "Chunk returned with the inventory.";
         }
         this.endDragProxy();
         this.showIntermission();
         return;
       }
 
-      this.editorMessage = "Chips need a quarter-beat inside a bullet domain.";
+      this.editorMessage = "Chunks need an open bullet corner.";
       this.endDragProxy();
       this.showIntermission();
       return;
@@ -584,7 +600,17 @@ export class GameScene {
     );
     const upgradedClass = source.classList.contains("is-upgraded") ? "is-upgraded" : "";
     const isScrapChip = source.classList.contains("scrap-chip-token");
-    proxy.className = ["drag-proxy", isScrapChip ? "is-scrap-chip" : "", timingClass, ...elapseClasses, upgradedClass]
+    const cornerClass = [...source.classList].find((className) =>
+      className.startsWith("is-corner-"),
+    );
+    proxy.className = [
+      "drag-proxy",
+      isScrapChip ? "is-scrap-chip" : "",
+      timingClass,
+      ...elapseClasses,
+      upgradedClass,
+      cornerClass,
+    ]
       .filter(Boolean)
       .join(" ");
     const pieceColor = styles.getPropertyValue("--piece-color").trim();
@@ -952,7 +978,7 @@ export class GameScene {
 
     const target = this.getChipReturnTarget(chipUid);
     if (!target) {
-      console.warn("Missing chip animation target", { chipUid });
+      console.warn("Missing chunk animation target", { chipUid });
       ghost.remove();
       return Promise.resolve();
     }
@@ -1035,14 +1061,16 @@ export class GameScene {
     bulletGhost.remove();
 
     const chipRect = {
-      left: center.x - 9,
-      top: center.y - 18,
-      width: 18,
-      height: 36,
+      left: center.x - 12,
+      top: center.y - 12,
+      width: 24,
+      height: 24,
     };
+    const piece = this.track.findPiece(uid);
+    const chunkCount = piece ? getChunkCountForSource(piece.id) : CHIP_TUNING.chipsPerScrap;
     const chipOffsets = Array.from(
-      { length: CHIP_TUNING.chipsPerScrap },
-      (_, index) => (index - (CHIP_TUNING.chipsPerScrap - 1) / 2) * 26,
+      { length: chunkCount },
+      (_, index) => (index - (chunkCount - 1) / 2) * 26,
     );
     const chipGhosts = chipOffsets.map((offset) =>
       this.createChipGhost({ ...chipRect, left: chipRect.left + offset }, snapshot.color)
@@ -1069,6 +1097,7 @@ export class GameScene {
   }
 
   highlightValidPlacements(uid) {
+    this.syncChunkDomainReductions();
     const timeline = this.overlay.querySelector(".timeline-body");
     timeline?.classList.add("is-dragging");
 
@@ -1084,11 +1113,15 @@ export class GameScene {
     const timeline = this.overlay.querySelector(".timeline-body");
     timeline?.classList.add("is-chip-dragging");
 
-    this.overlay.querySelectorAll("[data-chip-drop-beat]").forEach((drop) => {
-      const result = this.canPlaceChip(chipUid, Number(drop.dataset.chipDropBeat));
+    this.overlay.querySelectorAll("[data-chip-drop-host][data-chip-drop-corner]").forEach((drop) => {
+      const result = this.canPlaceChip(
+        chipUid,
+        drop.dataset.chipDropHost,
+        drop.dataset.chipDropCorner,
+      );
       drop.classList.toggle("is-valid-drop", result.ok);
       drop.classList.toggle("is-invalid-drop", !result.ok);
-      drop.title = result.ok ? "Place chip here" : result.reason;
+      drop.title = result.ok ? "Place chunk here" : result.reason;
     });
   }
 
@@ -1099,7 +1132,7 @@ export class GameScene {
       drop.classList.remove("is-valid-drop", "is-invalid-drop", "is-hover-drop");
       drop.removeAttribute("title");
     });
-    this.overlay?.querySelectorAll("[data-chip-drop-beat]").forEach((drop) => {
+    this.overlay?.querySelectorAll("[data-chip-drop-host][data-chip-drop-corner]").forEach((drop) => {
       drop.classList.remove("is-valid-drop", "is-invalid-drop", "is-hover-drop");
       drop.removeAttribute("title");
     });
@@ -1116,7 +1149,7 @@ export class GameScene {
   }
 
   updateChipDropHover(activeDrop) {
-    this.overlay.querySelectorAll(".chip-timeline-drop.is-hover-drop").forEach((drop) => {
+    this.overlay.querySelectorAll(".chunk-corner-drop.is-hover-drop").forEach((drop) => {
       if (drop !== activeDrop) {
         drop.classList.remove("is-hover-drop");
       }
@@ -1129,74 +1162,193 @@ export class GameScene {
     return this.scrapChips.find((chip) => chip.uid === chipUid) ?? null;
   }
 
-  getChipHostAtBeat(beat) {
-    return this.track.getPlacementViews().find((entry) => {
-      const domainLength = entry.domain.end - entry.domain.start;
-      return domainLength > EPSILON &&
-        beat >= entry.domain.start - EPSILON &&
-        beat <= entry.domain.end + EPSILON;
-    }) ?? null;
+  getChunkDomainSide(corner) {
+    if (corner === "top-left" || corner === "bottom-left") {
+      return "lead";
+    }
+
+    if (corner === "top-right" || corner === "bottom-right") {
+      return "follow";
+    }
+
+    return null;
   }
 
-  canPlaceChip(chipUid, rawBeat) {
+  getHostDomainSideBeats(host, side) {
+    if (!host) {
+      return 0;
+    }
+
+    if (side === "lead") {
+      return getBulletDef(host.id).leadBeats ?? 0;
+    }
+
+    if (side === "follow") {
+      return getSlotFollowBeats(host);
+    }
+
+    return 0;
+  }
+
+  addChunkDomainReduction(reductions, chip) {
+    if (chip?.sourceId !== "chip" || !chip.hostUid || !CHIP_CORNER_SET.has(chip.corner)) {
+      return;
+    }
+
+    const side = this.getChunkDomainSide(chip.corner);
+    if (!side) {
+      return;
+    }
+
+    const entry = reductions.get(chip.hostUid) ?? { lead: 0, follow: 0 };
+    entry[side] += CHIP_TUNING.chipDomainReductionBeats;
+    reductions.set(chip.hostUid, entry);
+  }
+
+  getChunkDomainReductions({ excludeUid = null, include = null } = {}) {
+    const reductions = new Map();
+    this.scrapChips.forEach((chip) => {
+      if (chip.uid !== excludeUid) {
+        this.addChunkDomainReduction(reductions, chip);
+      }
+    });
+
+    if (include) {
+      this.addChunkDomainReduction(reductions, include);
+    }
+
+    return reductions;
+  }
+
+  syncChunkDomainReductions() {
+    this.track.setDomainReductions(this.getChunkDomainReductions());
+  }
+
+  getReducedDomain(piece, reductions, beat = piece.beat) {
+    const reduction = reductions.get(piece.uid) ?? {};
+    const leadBeats = Math.max(0, (getBulletDef(piece.id).leadBeats ?? 0) - (reduction.lead ?? 0));
+    const followBeats = Math.max(0, getSlotFollowBeats(piece) - (reduction.follow ?? 0));
+    return {
+      start: beat - leadBeats,
+      end: beat + followBeats,
+    };
+  }
+
+  domainsOverlap(a, b) {
+    return a.start < b.end - EPSILON && a.end > b.start + EPSILON;
+  }
+
+  trackDomainsFitWithReductions(reductions) {
+    const domains = this.track.placements.map((placement) => ({
+      placement,
+      domain: this.getReducedDomain(placement, reductions),
+    }));
+
+    const outOfBounds = domains.find(({ domain }) =>
+      domain.start < this.track.domainStartBeat - EPSILON ||
+      domain.end > this.track.domainEndBeat + EPSILON
+    );
+    if (outOfBounds) {
+      return false;
+    }
+
+    return !domains.some(({ placement, domain }, index) =>
+      domains.slice(index + 1).some((other) =>
+        placement.uid !== other.placement.uid &&
+        this.domainsOverlap(domain, other.domain)
+      )
+    );
+  }
+
+  canRemoveChunkDomainReduction(chipUid) {
+    const reductions = this.getChunkDomainReductions({ excludeUid: chipUid });
+    return this.trackDomainsFitWithReductions(reductions);
+  }
+
+  canPlaceChipDomainReduction(chip, host, corner) {
+    if (chip.sourceId !== "chip") {
+      return { ok: true };
+    }
+
+    const side = this.getChunkDomainSide(corner);
+    const sideName = side === "lead" ? "left" : "right";
+    const sideCapacity = this.getHostDomainSideBeats(host, side);
+    const currentReduction = this.getChunkDomainReductions({ excludeUid: chip.uid })
+      .get(host.uid)?.[side] ?? 0;
+    if (sideCapacity - currentReduction < CHIP_TUNING.chipDomainReductionBeats - EPSILON) {
+      return { ok: false, reason: `That ${sideName} half has no domain to shrink.` };
+    }
+
+    const reductions = this.getChunkDomainReductions({
+      excludeUid: chip.uid,
+      include: {
+        ...chip,
+        hostUid: host.uid,
+        corner,
+      },
+    });
+    if (!this.trackDomainsFitWithReductions(reductions)) {
+      return { ok: false, reason: "That chunk is holding bullet domains apart." };
+    }
+
+    return { ok: true };
+  }
+
+  canPlaceChip(chipUid, hostUid, corner) {
     const chip = this.findChip(chipUid);
     if (!chip) {
-      return { ok: false, reason: "Missing chip." };
+      return { ok: false, reason: "Missing chunk." };
     }
 
-    const beat = Number(rawBeat);
-    if (!Number.isFinite(beat) || Math.abs(beat - snapToQuarterBeat(beat)) > EPSILON) {
-      return { ok: false, reason: "Quarter-beats only." };
-    }
-
-    if (beat < 0 || beat > this.track.lastPlaceableBeat + EPSILON) {
-      return { ok: false, reason: "Outside the track." };
-    }
-
-    const host = this.getChipHostAtBeat(beat);
+    const host = hostUid ? this.track.findPiece(hostUid) : null;
     if (!host) {
-      return { ok: false, reason: "Place inside a bullet domain." };
+      return { ok: false, reason: "Place on a bullet." };
     }
 
-    if (host.id === "chip") {
-      return { ok: false, reason: "Chips cannot socket into Chip bullets." };
+    if (!this.track.isPieceOnTrack(host.uid)) {
+      return { ok: false, reason: "Place on a bullet in the track." };
+    }
+
+    if (!CHIP_CORNER_SET.has(corner)) {
+      return { ok: false, reason: "Pick a bullet corner." };
     }
 
     if (host.id === "pair" && host.upgraded) {
-      return { ok: false, reason: "Upgraded Pair has no chip socket space." };
+      return { ok: false, reason: "Upgraded Pair has no chunk socket space." };
     }
 
-    if (Math.abs(beat - host.position) < EPSILON) {
-      return { ok: false, reason: "Chips cannot sit on top of the bullet." };
-    }
-
-    if (
-      beat < host.domain.start + DOMAIN_EDGE_VISUAL_GAP - EPSILON ||
-      beat > host.domain.end - DOMAIN_EDGE_VISUAL_GAP + EPSILON
-    ) {
-      return { ok: false, reason: "Use the visible middle of the domain." };
+    const domainResult = this.canPlaceChipDomainReduction(chip, host, corner);
+    if (!domainResult.ok) {
+      return domainResult;
     }
 
     const occupied = this.scrapChips.find((otherChip) =>
       otherChip.uid !== chipUid &&
       otherChip.hostUid === host.uid &&
-      Number.isFinite(otherChip.beat) &&
-      Math.abs(otherChip.beat - beat) < EPSILON
+      otherChip.corner === corner
     );
     if (occupied) {
-      return { ok: false, reason: "That chip beat is occupied." };
+      return { ok: false, reason: "That chunk corner is occupied." };
     }
 
-    return { ok: true, beat, hostUid: host.uid, hostName: host.name };
+    return {
+      ok: true,
+      hostUid: host.uid,
+      hostName: getSlotName(host),
+      corner,
+      cornerName: CHIP_CORNER_LABELS[corner] ?? corner,
+    };
   }
 
-  placeChipAt(chipUid, rawBeat) {
-    const result = this.canPlaceChip(chipUid, rawBeat);
+  placeChipAt(chipUid, hostUid, corner) {
+    const result = this.canPlaceChip(chipUid, hostUid, corner);
     const chip = this.findChip(chipUid);
     if (result.ok && chip) {
       chip.hostUid = result.hostUid;
-      chip.beat = result.beat;
-      this.editorMessage = `Chip placed in ${result.hostName}'s domain.`;
+      chip.corner = result.corner;
+      chip.beat = null;
+      this.syncChunkDomainReductions();
+      this.editorMessage = `Chunk placed on ${result.hostName}'s ${result.cornerName} corner.`;
     } else {
       this.editorMessage = result.reason;
     }
@@ -1207,12 +1359,19 @@ export class GameScene {
   returnChipToTray(chipUid) {
     const chip = this.findChip(chipUid);
     if (!chip) {
-      this.editorMessage = "Missing chip.";
+      this.editorMessage = "Missing chunk.";
+      return false;
+    }
+
+    if (chip.sourceId === "chip" && chip.hostUid && !this.canRemoveChunkDomainReduction(chipUid)) {
+      this.editorMessage = "That chunk is holding bullet domains apart.";
       return false;
     }
 
     chip.hostUid = null;
+    chip.corner = null;
     chip.beat = null;
+    this.syncChunkDomainReductions();
     return true;
   }
 
@@ -1225,43 +1384,50 @@ export class GameScene {
     this.scrapChips.forEach((chip) => {
       if (hostSet.has(chip.hostUid)) {
         chip.hostUid = null;
+        chip.corner = null;
         chip.beat = null;
       }
     });
+    this.syncChunkDomainReductions();
   }
 
   returnInvalidChipPlacements() {
     this.scrapChips.forEach((chip) => {
-      if (!chip.hostUid || !Number.isFinite(chip.beat)) {
+      if (!chip.hostUid && !chip.corner && !Number.isFinite(chip.beat)) {
         return;
       }
 
       const host = this.track.findPiece(chip.hostUid);
       const isHostOnTrack = host && this.track.isPieceOnTrack(host.uid);
-      const domain = isHostOnTrack ? this.track.getDomain(host) : null;
-      const fitsTrack =
-        chip.beat >= -EPSILON &&
-        chip.beat <= this.track.lastPlaceableBeat + EPSILON;
-      const fitsDomain = domain &&
-        fitsTrack &&
-        domain.end - domain.start > EPSILON &&
-        chip.beat >= domain.start - EPSILON &&
-        chip.beat <= domain.end + EPSILON;
-      if (!fitsDomain) {
+      const occupied = this.scrapChips.some((otherChip) =>
+        otherChip.uid !== chip.uid &&
+        otherChip.hostUid === chip.hostUid &&
+        otherChip.corner === chip.corner
+      );
+      if (
+        !host ||
+        !isHostOnTrack ||
+        !CHIP_CORNER_SET.has(chip.corner) ||
+        (host.id === "pair" && host.upgraded) ||
+        occupied ||
+        !this.canPlaceChipDomainReduction(chip, host, chip.corner).ok
+      ) {
         chip.hostUid = null;
+        chip.corner = null;
         chip.beat = null;
       }
     });
+    this.syncChunkDomainReductions();
   }
 
   getCombatChipsForSlot(uid) {
     return this.scrapChips
-      .filter((chip) => chip.hostUid === uid && Number.isFinite(chip.beat))
+      .filter((chip) => chip.hostUid === uid && CHIP_CORNER_SET.has(chip.corner))
       .map((chip) => ({
         uid: chip.uid,
         sourceId: chip.sourceId,
         sourceUpgraded: Boolean(chip.sourceUpgraded),
-        beat: chip.beat,
+        corner: chip.corner,
       }));
   }
 
@@ -1383,7 +1549,7 @@ export class GameScene {
   }
 
   createScrapChips(piece) {
-    return Array.from({ length: CHIP_TUNING.chipsPerScrap }, () => {
+    return Array.from({ length: getChunkCountForSource(piece.id) }, () => {
       this.scrapChipSerial += 1;
       return {
         uid: `chip-${this.scrapChipSerial}`,
@@ -1392,6 +1558,9 @@ export class GameScene {
         sourceName: getSlotName(piece),
         sourceUpgraded: Boolean(piece.upgraded),
         color: getSlotColor(piece),
+        hostUid: null,
+        corner: null,
+        beat: null,
       };
     });
   }
@@ -1435,7 +1604,7 @@ export class GameScene {
       choices: [],
       scrappableCount: remainingScrappable,
     };
-    this.editorMessage = `Scrapped ${scrappedName} into ${CHIP_TUNING.chipsPerScrap} chip${CHIP_TUNING.chipsPerScrap === 1 ? "" : "s"}.`;
+    this.editorMessage = `Scrapped ${scrappedName} into ${chips.length} chunk${chips.length === 1 ? "" : "s"}.`;
 
     if (this.storePicks <= 0 || remainingScrappable === 0) {
       const leftoverPicks = Math.max(0, this.storePicks);
@@ -1578,6 +1747,7 @@ export class GameScene {
     this.pendingAspectSpreads = [];
     this.resetPlatingFinisher();
     this.frameEnemyIndex = null;
+    this.knockbackStepAccumulator = 0;
     this.waveKills = 0;
     this.visualWaveProgress = 0;
     this.waveClearOutro = false;
@@ -1628,6 +1798,7 @@ export class GameScene {
     this.active = false;
     this.intermission = true;
     this.suppressBeatBullets = true;
+    this.syncChunkDomainReductions();
     const isOpeningReadyCheck = isFirst ||
       (this.waveIndex === 0 && !this.pendingUpgrade && !this.pendingWoe && !this.storeOffer);
     this.intermissionView.renderIntermission({
@@ -1655,6 +1826,7 @@ export class GameScene {
   }
 
   placeSelectedAt(beat) {
+    this.syncChunkDomainReductions();
     const result = this.track.movePieceToTrack(this.track.selectedUid, beat);
     if (result.ok) {
       this.returnInvalidChipPlacements();
@@ -1694,6 +1866,7 @@ export class GameScene {
     if (this.shouldUpdateWaves() && !this.platingFinisherActive) {
       this.waveRunner.update(this.beat, (enemy) => this.spawnEnemy(enemy), this.enemies, {
         currentSecond: this.runSeconds,
+        kills: this.waveKills,
       });
     }
     this.updateEchoes();
@@ -1881,11 +2054,30 @@ export class GameScene {
         targetLane: target?.lane ?? null,
         targetY: target ? target.visualY ?? target.y : null,
         targetOffscreen: !target,
+        arcLean: Math.random() < 0.5 ? -1 : 1,
+        arcBend: 34 + Math.random() * 34,
         color: PLATING_FINISH_COLOR,
         ttl: PLATING_FINISH_TRAIL_SECONDS,
         duration: PLATING_FINISH_TRAIL_SECONDS,
       });
     }
+  }
+
+  addPlatingImpact(target) {
+    if (!target || !Number.isInteger(target.lane) || !Number.isFinite(target.y)) {
+      return;
+    }
+
+    this.effects.push({
+      kind: "platingImpact",
+      lane: target.lane,
+      y: target.visualY ?? target.y,
+      color: "#ffffff",
+      radius: PLATING_IMPACT_RADIUS,
+      growth: PLATING_IMPACT_GROWTH,
+      ttl: PLATING_IMPACT_SECONDS,
+      duration: PLATING_IMPACT_SECONDS,
+    });
   }
 
   processPendingPlatingStrikes() {
@@ -1906,6 +2098,7 @@ export class GameScene {
     ready.forEach((strike) => {
       const target = this.enemies.find((enemy) => enemy.id === strike.targetId);
       if (target?.hp > 0) {
+        this.addPlatingImpact(target);
         target.hp = 0;
         target.flashTtl = Math.max(target.flashTtl ?? 0, 0.16);
         target.flashDuration = 0.16;
@@ -1971,19 +2164,25 @@ export class GameScene {
     });
   }
 
-  schedulePairChipShots({ hostUid, lane, hostBeat, targetBeat, damageMultiplier }) {
+  schedulePairChipShots({ hostUid, lane, targetBeat, damageMultiplier }) {
     this.scrapChips
       .filter((chip) =>
         chip.hostUid === hostUid &&
         chip.sourceId === "pair" &&
-        Number.isFinite(chip.beat)
+        CHIP_CORNER_SET.has(chip.corner)
       )
-      .forEach((chip) => {
-        const chipOffset = chip.beat - hostBeat;
+      .sort((a, b) => {
+        const cornerDelta = CHIP_CORNERS.indexOf(a.corner) - CHIP_CORNERS.indexOf(b.corner);
+        return cornerDelta || String(a.uid).localeCompare(String(b.uid));
+      })
+      .forEach((chip, index) => {
         this.pendingChipShots.push({
           chipUid: chip.uid,
           lane,
-          fireBeat: Math.max(this.beat, targetBeat + chipOffset),
+          fireBeat: Math.max(
+            this.beat,
+            targetBeat + (index + 1) * CHIP_TUNING.pairShotIntervalBeats,
+          ),
           damageMultiplier,
         });
       });
@@ -2003,6 +2202,25 @@ export class GameScene {
       });
       this.consumeCombatEvents(events, "chip");
     });
+  }
+
+  updateEnemySlowEffects(enemy, dt) {
+    if (!enemy.slowEffects?.length) {
+      return 1;
+    }
+
+    let multiplier = 1;
+    enemy.slowEffects = enemy.slowEffects.filter((slow) => {
+      if (!Number.isFinite(slow.secondsRemaining) || slow.secondsRemaining <= 0) {
+        return false;
+      }
+
+      multiplier = Math.min(multiplier, slow.multiplier ?? 1);
+      slow.secondsRemaining -= dt;
+      return slow.secondsRemaining > 0;
+    });
+
+    return multiplier;
   }
 
   updateEnemies(dt, enemyIndex = createEnemyFrameIndex(this.enemies)) {
@@ -2034,14 +2252,18 @@ export class GameScene {
         : this.activeElapse?.secondarySlowMultiplier < 1 && enemy.id === this.activeElapse.secondaryTargetId
         ? this.activeElapse.secondarySlowMultiplier
         : 1;
+      const chunkSlow = this.updateEnemySlowEffects(enemy, movementDt);
+      const knockbackRecoverySpeed = updateKnockbackRecoverySpeedMultiplier(enemy, movementDt);
       enemy.y += enemy.speed *
         laneBoosts[enemy.lane] *
         (speedMultipliers.get(enemy.id) ?? 1) *
         elapseSlow *
+        chunkSlow *
+        knockbackRecoverySpeed *
         movementDt;
     });
 
-    const knockbacksResolvedSpacing = updateEnemyKnockbacks(this.enemies, movementDt);
+    const knockbacksResolvedSpacing = this.updateKnockbacksFixedStep(movementDt);
     if (!knockbacksResolvedSpacing) {
       resolveEnemyLaneSpacing(this.enemies);
     }
@@ -2073,6 +2295,25 @@ export class GameScene {
         });
       }
     });
+  }
+
+  updateKnockbacksFixedStep(dt) {
+    if (!Number.isFinite(dt) || dt <= 0) {
+      return false;
+    }
+
+    this.knockbackStepAccumulator = Math.min(
+      this.knockbackStepAccumulator + dt,
+      KNOCKBACK_SIMULATION_STEP_SECONDS * 4,
+    );
+
+    let updated = false;
+    while (this.knockbackStepAccumulator >= KNOCKBACK_SIMULATION_STEP_SECONDS) {
+      updated = updateEnemyKnockbacks(this.enemies, KNOCKBACK_SIMULATION_STEP_SECONDS) || updated;
+      this.knockbackStepAccumulator -= KNOCKBACK_SIMULATION_STEP_SECONDS;
+    }
+
+    return updated;
   }
 
   updateEffects(dt) {
@@ -2463,7 +2704,6 @@ export class GameScene {
     this.schedulePairChipShots({
       hostUid: shot.entry.uid,
       lane,
-      hostBeat: shot.entry.beat,
       targetBeat: shot.targetBeat,
       damageMultiplier: multiplier,
     });

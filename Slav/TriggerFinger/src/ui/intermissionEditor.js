@@ -6,7 +6,7 @@ import {
   getSlotName,
   isElapsePiece,
 } from "../defs/bullets.js";
-import { EPSILON, QUARTER_BEAT } from "../utils/beatMath.js";
+import { CHIP_CORNERS, CHIP_CORNER_LABELS } from "../defs/chips.js";
 import { getTimelineDomainMetrics, timelineLeft } from "./timelineMetrics.js";
 
 function timingLabel(timing) {
@@ -242,15 +242,6 @@ function renderElapseInventoryCard(track, pieces, unavailableUids = new Set()) {
   `;
 }
 
-function getQuarterBeatMarks(track) {
-  const marks = [];
-  for (let beat = 0; beat <= track.lastPlaceableBeat + EPSILON; beat += QUARTER_BEAT) {
-    marks.push(Number(beat.toFixed(2)));
-  }
-
-  return marks;
-}
-
 function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
   const placementViews = track
     .getPlacementViews()
@@ -275,19 +266,6 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
           style="left:${timelineLeft(mark.beat, track)}%"
           data-drop-beat="${mark.beat}"
           aria-label="Place at beat ${mark.beat}"
-        ></button>
-      `,
-    )
-    .join("");
-
-  const chipDrops = getQuarterBeatMarks(track)
-    .map(
-      (beat) => `
-        <button
-          class="chip-timeline-drop"
-          style="left:${timelineLeft(beat, track)}%"
-          data-chip-drop-beat="${beat}"
-          aria-label="Place chip at beat ${beat}"
         ></button>
       `,
     )
@@ -322,6 +300,21 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
     })
     .join("");
 
+  const placementUids = new Set(placementViews.map((entry) => entry.uid));
+  const chipsByHost = new Map();
+  scrapChips.forEach((chip) => {
+    if (
+      chip.hostUid &&
+      chip.corner &&
+      placementUids.has(chip.hostUid) &&
+      !hiddenUids.has(chip.hostUid)
+    ) {
+      const hostChips = chipsByHost.get(chip.hostUid) ?? [];
+      hostChips.push(chip);
+      chipsByHost.set(chip.hostUid, hostChips);
+    }
+  });
+
   const placements = placementViews
     .map((entry) => {
       const bulletLeft = timelineLeft(entry.position, track);
@@ -334,6 +327,49 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
         entry.upgraded ? "is-upgraded" : "",
         selected,
       ].filter(Boolean).join(" ");
+      const hostChips = chipsByHost.get(entry.uid) ?? [];
+      const cornerDrops = CHIP_CORNERS
+        .map((corner) => `
+          <button
+            class="chunk-corner-drop is-corner-${corner}"
+            data-chip-drop-host="${entry.uid}"
+            data-chip-drop-corner="${corner}"
+            aria-label="Place chunk on ${escapeHtml(entry.name)} ${CHIP_CORNER_LABELS[corner]} corner"
+          >
+            <span class="chunk-corner-shape"></span>
+          </button>
+        `)
+        .join("");
+      const chunks = hostChips
+        .map((chip) => {
+          const color = chip.color ?? getSlotColor(entry);
+          const corner = CHIP_CORNERS.includes(chip.corner) ? chip.corner : CHIP_CORNERS[0];
+          return `
+            <button
+              class="scrap-chip-token timeline-chip is-corner-${corner}"
+              draggable="true"
+              style="--chip-color:${color};--piece-color:${color}"
+              data-chip-uid="${chip.uid}"
+              data-chip-source="track"
+              data-chip-host="${chip.hostUid}"
+              data-chip-corner="${corner}"
+              title="${escapeHtml(chip.sourceName ?? "Chunk")} chunk on ${escapeHtml(entry.name)}"
+              aria-label="Drag placed chunk"
+            >
+              <span class="scrap-chip-body"></span>
+            </button>
+          `;
+        })
+        .join("");
+      const chunkLayer = `
+        <span
+          class="timeline-piece-chunk-layer ${elapseClasses(entry)}"
+          style="left:${bulletLeft}%;--piece-color:${entry.color}"
+        >
+          ${cornerDrops}
+          ${chunks}
+        </span>
+      `;
       return `
         <span
           class="timeline-domain ${entry.elapseActive ? "" : "is-elapse-inactive"}"
@@ -352,33 +388,7 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
         >
           ${renderBulletGlyph(entry.def)}
         </button>
-      `;
-    })
-    .join("");
-  const placementUids = new Set(placementViews.map((entry) => entry.uid));
-  const chips = scrapChips
-    .filter((chip) =>
-      chip.hostUid &&
-      Number.isFinite(chip.beat) &&
-      placementUids.has(chip.hostUid) &&
-      !hiddenUids.has(chip.hostUid)
-    )
-    .map((chip) => {
-      const host = track.findPiece(chip.hostUid);
-      const color = chip.color ?? (host ? getSlotColor(host) : "#9aa1ad");
-      return `
-        <button
-          class="scrap-chip-token timeline-chip"
-          draggable="true"
-          style="left:${timelineLeft(chip.beat, track)}%;--chip-color:${color};--piece-color:${color}"
-          data-chip-uid="${chip.uid}"
-          data-chip-source="track"
-          data-chip-host="${chip.hostUid}"
-          title="${escapeHtml(chip.sourceName ?? "Chip")} at ${chip.beat}"
-          aria-label="Drag placed chip"
-        >
-          <span class="scrap-chip-body"></span>
-        </button>
+        ${chunkLayer}
       `;
     })
     .join("");
@@ -392,9 +402,7 @@ function renderTrackEditor(track, hiddenUids = new Set(), scrapChips = []) {
       <div class="timeline-body">
         ${marks}
         ${drops}
-        ${chipDrops}
         ${elapseLinks}
-        ${chips}
         ${placements}
       </div>
     </div>

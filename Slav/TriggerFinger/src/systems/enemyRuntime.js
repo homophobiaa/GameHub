@@ -2,7 +2,6 @@ import { getAspectDef, getAspectForSource } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
 import {
   LANES,
-  LEAP_FALLBACK_TARGET_Y,
   LEAP_MIN_TARGET_Y,
 } from "../config/gameplay.js";
 import { clamp } from "../utils/math.js";
@@ -99,14 +98,23 @@ export function pickAspectSpreadTargets(enemies, count = 4) {
   return pickRandom(candidates, count);
 }
 
-export function findLeapRetarget(enemy, enemies) {
+function leapMinTargetY(enemy) {
+  return Number.isFinite(enemy?.leap?.minTargetY)
+    ? Math.max(LEAP_MIN_TARGET_Y, enemy.leap.minTargetY)
+    : LEAP_MIN_TARGET_Y;
+}
+
+export function findLeapRetarget(enemy, enemies, minTargetY = leapMinTargetY(enemy)) {
   const enemyIndex = toEnemyFrameIndex(enemies);
+  const targetFloorY = Number.isFinite(minTargetY)
+    ? Math.max(LEAP_MIN_TARGET_Y, minTargetY)
+    : LEAP_MIN_TARGET_Y;
   const candidates = enemyIndex
     .targetableInLane(enemy.lane)
     .filter((candidate) =>
       candidate.id !== enemy.id &&
       candidate.type !== "leap" &&
-      candidate.y >= LEAP_MIN_TARGET_Y
+      candidate.y >= targetFloorY
     );
   return candidates[0] ?? null;
 }
@@ -144,13 +152,14 @@ function setLeapTarget(enemy, target, beat) {
 
 function setLeapFallback(enemy, beat) {
   const leap = enemy.leap;
-  if (leap.targetId === null && leap.destinationY === LEAP_FALLBACK_TARGET_Y) {
+  const targetY = leapMinTargetY(enemy);
+  if (leap.targetId === null && leap.destinationY === targetY) {
     return;
   }
 
   leap.targetId = null;
-  leap.targetY = LEAP_FALLBACK_TARGET_Y;
-  leap.destinationY = LEAP_FALLBACK_TARGET_Y;
+  leap.targetY = targetY;
+  leap.destinationY = targetY;
   readjustLeapArc(enemy, beat);
 }
 
@@ -158,8 +167,9 @@ export function updateLeapEnemy(enemy, enemies, beat) {
   const enemyIndex = toEnemyFrameIndex(enemies);
   const leap = enemy.leap;
   const target = enemyIndex.findById(leap.targetId);
+  const minTargetY = leapMinTargetY(enemy);
 
-  if (target?.hp > 0) {
+  if (target?.hp > 0 && target.y >= minTargetY) {
     leap.targetY = target.y;
     leap.destinationY = null;
     shortenLeapForCurrentTarget(enemy, beat);
@@ -169,7 +179,7 @@ export function updateLeapEnemy(enemy, enemies, beat) {
       leap.targetY = lastTargetY;
     }
 
-    const nextTarget = findLeapRetarget(enemy, enemyIndex);
+    const nextTarget = findLeapRetarget(enemy, enemyIndex, minTargetY);
     if (nextTarget) {
       setLeapTarget(enemy, nextTarget, beat);
     } else {

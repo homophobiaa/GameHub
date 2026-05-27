@@ -2,7 +2,6 @@ import { getEnemyDef } from "../defs/enemies.js";
 import {
   BARRIER_SPAWN_MAX_LANE_Y,
   LANES,
-  LEAP_FALLBACK_TARGET_Y,
   LEAP_MIN_TARGET_Y,
 } from "../config/gameplay.js";
 import { randomChoice } from "../utils/random.js";
@@ -39,7 +38,7 @@ function createPattern(type, beat, context = {}) {
       ...pattern,
       pattern: "cheerPack",
       consumeCount: getEnemyPatternConsumeCount(type, context),
-      followerSpacing: 0.5,
+      followerSpacing: 0.75,
     };
   }
 
@@ -79,7 +78,7 @@ function createPattern(type, beat, context = {}) {
 
 export function getEnemyPatternConsumeCount(type, context = {}) {
   if (type === "cheer") {
-    return 1 + Math.min(4, 1 + Math.floor((context.waveIndex ?? 0) / 3));
+    return 1 + Math.min(3, Math.floor((context.waveIndex ?? 0) / 3));
   }
 
   if (type === "regen") {
@@ -193,13 +192,14 @@ function activateGhost(pattern, localBeat, enemies) {
   return [lockedSpawn(localBeat + pattern.warningBeats, pattern.type, lane, aspectGrantorExtra(pattern))];
 }
 
-function activateRegen(pattern, localBeat) {
+function activateRegen(pattern, localBeat, enemies) {
   const lane = randomChoice(LANES);
   const spawnBeat = localBeat + pattern.warningBeats;
   return [
     lockedSpawn(spawnBeat, pattern.type, lane, aspectGrantorExtra(pattern)),
     ...LANES
       .filter((nextLane) => nextLane !== lane)
+      .filter((nextLane) => liveCountInLane(enemies, nextLane) < 2)
       .map((nextLane) => lockedSpawn(spawnBeat + pattern.followerSpacing, "basic", nextLane)),
   ];
 }
@@ -283,39 +283,87 @@ function closestToBase(enemies) {
   return toEnemyFrameIndex(enemies).closestToBase();
 }
 
-function createLeapFallbackSpawn(pattern, localBeat) {
-  const lane = Number.isInteger(pattern.lane) ? pattern.lane : randomChoice(LANES);
+function chooseLeapLane(pattern, blockedLanes = []) {
+  const blocked = new Set(blockedLanes);
+  if (Number.isInteger(pattern.lane) && !blocked.has(pattern.lane)) {
+    return pattern.lane;
+  }
+
+  const openLanes = LANES.filter((lane) => !blocked.has(lane));
+  return openLanes.length > 0 ? randomChoice(openLanes) : null;
+}
+
+function safeLeapMinTargetY(value) {
+  return Number.isFinite(value)
+    ? Math.max(LEAP_MIN_TARGET_Y, value)
+    : LEAP_MIN_TARGET_Y;
+}
+
+function createLeapFallbackSpawn(
+  pattern,
+  localBeat,
+  minTargetY = LEAP_MIN_TARGET_Y,
+  blockedLanes = [],
+  selectedLane = null,
+) {
+  const lane = Number.isInteger(selectedLane)
+    ? selectedLane
+    : chooseLeapLane(pattern, blockedLanes);
+  if (!Number.isInteger(lane)) {
+    return null;
+  }
+
+  const targetY = safeLeapMinTargetY(minTargetY);
   return [lockedSpawn(localBeat + pattern.warningBeats, pattern.type, lane, aspectGrantorExtra(pattern, {
     leapTargetId: null,
-    leapTargetY: LEAP_FALLBACK_TARGET_Y,
+    leapTargetY: targetY,
+    leapMinTargetY: targetY,
     leapFallback: true,
   }))];
 }
 
-function activateLeap(pattern, localBeat, enemies, { priority = false, reservedTargetIds = new Set() } = {}) {
+function activateLeap(
+  pattern,
+  localBeat,
+  enemies,
+  {
+    priority = false,
+    reservedTargetIds = new Set(),
+    minTargetY = LEAP_MIN_TARGET_Y,
+    blockedLanes = [],
+    selectedLane = null,
+  } = {},
+) {
+  const targetFloorY = safeLeapMinTargetY(minTargetY);
+  const lane = Number.isInteger(selectedLane)
+    ? selectedLane
+    : chooseLeapLane(pattern, blockedLanes);
+  if (!Number.isInteger(lane)) {
+    return null;
+  }
+
   const targets = leapTargets(enemies);
-  const fallbackAllowed = localBeat >= pattern.expiresBeat;
   if (targets.length === 0) {
-    return fallbackAllowed ? createLeapFallbackSpawn(pattern, localBeat) : null;
+    return createLeapFallbackSpawn(pattern, localBeat, targetFloorY, blockedLanes, lane);
   }
 
   const laneTargets = targets.filter((enemy) =>
-    enemy.lane === pattern.lane &&
+    enemy.lane === lane &&
     !reservedTargetIds.has(enemy.id)
   );
   const priorityTarget = priority
-    ? closestToBase(laneTargets.filter((enemy) => enemy.y >= 0.5))
+    ? closestToBase(laneTargets.filter((enemy) => enemy.y >= Math.max(0.5, targetFloorY)))
     : null;
-  const regularTarget = closestToBase(laneTargets.filter((enemy) => enemy.y >= LEAP_MIN_TARGET_Y));
-  const lastTarget = targets.length === 1 && !reservedTargetIds.has(targets[0].id) ? targets[0] : null;
-  const target = priorityTarget ?? regularTarget ?? lastTarget;
+  const regularTarget = closestToBase(laneTargets.filter((enemy) => enemy.y >= targetFloorY));
+  const target = priorityTarget ?? regularTarget;
   if (!target) {
-    return fallbackAllowed ? createLeapFallbackSpawn(pattern, localBeat) : null;
+    return createLeapFallbackSpawn(pattern, localBeat, targetFloorY, blockedLanes, lane);
   }
 
   return [lockedSpawn(localBeat + pattern.warningBeats, pattern.type, target.lane, aspectGrantorExtra(pattern, {
     leapTargetId: target.id,
     leapTargetY: target.y,
+    leapMinTargetY: targetFloorY,
     leapPriority: priority,
   }))];
 }
@@ -326,6 +374,8 @@ export function tryActivateEnemySpawnPattern(
     localBeat,
     enemies,
     leapSeatAvailable = false,
+    leapMinTargetY = LEAP_MIN_TARGET_Y,
+    blockedLeapLanes = [],
     reservedLeapTargetIds = new Set(),
     blockedBarrierLanes = [],
     blockedCheerLanes = [],
@@ -340,9 +390,14 @@ export function tryActivateEnemySpawnPattern(
     return { spawns: [], consumeCount: 0, done: false };
   }
 
+  const leapLane = isLeap ? chooseLeapLane(pattern, blockedLeapLanes) : null;
   const leapPriority = isLeap &&
     leapSeatAvailable &&
-    leapTargets(enemies).some((enemy) => enemy.lane === pattern.lane && enemy.y >= 0.5);
+    Number.isInteger(leapLane) &&
+    leapTargets(enemies).some((enemy) =>
+      enemy.lane === leapLane &&
+      enemy.y >= Math.max(0.5, safeLeapMinTargetY(leapMinTargetY))
+    );
   if (localBeat < pattern.earliestBeat && !leapPriority) {
     return { spawns: [], consumeCount: 0, done: false };
   }
@@ -358,6 +413,9 @@ export function tryActivateEnemySpawnPattern(
     }),
     leapAmbush: () => activateLeap(pattern, localBeat, enemies, {
       priority: leapPriority,
+      minTargetY: leapMinTargetY,
+      blockedLanes: blockedLeapLanes,
+      selectedLane: leapLane,
       reservedTargetIds: reservedLeapTargetIds,
     }),
   };

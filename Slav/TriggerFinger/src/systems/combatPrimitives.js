@@ -1,6 +1,8 @@
 import { getAspectDef } from "../defs/aspects.js";
+import { getBulletDef } from "../defs/bullets.js";
 import { getEnemyDef } from "../defs/enemies.js";
-import { MIN_ENEMY_Y, PROJECTILE_END_Y } from "../config/gameplay.js";
+import { GHOST_PHASE_GRACE_BEATS, MIN_ENEMY_Y, PROJECTILE_END_Y } from "../config/gameplay.js";
+import { EPSILON } from "../utils/beatMath.js";
 import { isTargetable, toEnemyFrameIndex } from "./enemyFrameIndex.js";
 import { queueEnemyKnockback } from "./enemyCollision.js";
 
@@ -71,6 +73,14 @@ function getAspectDamageAmount(enemy, amount, { consume = false } = {}) {
   return amount;
 }
 
+function isGhostPhaseGraceActive(enemy, currentBeat) {
+  return enemy.type === "ghost" &&
+    enemy.ghostCharges > 0 &&
+    Number.isFinite(currentBeat) &&
+    Number.isFinite(enemy.ghostPhaseGraceUntilBeat) &&
+    currentBeat < enemy.ghostPhaseGraceUntilBeat - EPSILON;
+}
+
 export function applyDamage(enemy, amount, currentBeat, events, options = {}) {
   if (!enemy || enemy.hp <= 0 || enemy.targetable === false) {
     return { damaged: false, passedThrough: false, killed: false };
@@ -81,12 +91,20 @@ export function applyDamage(enemy, amount, currentBeat, events, options = {}) {
   }
 
   if (!options.ignoreGhost && enemy.ghostCharges > 0) {
-    enemy.ghostCharges -= 1;
+    const consumedPhase = !isGhostPhaseGraceActive(enemy, currentBeat);
+    if (consumedPhase) {
+      enemy.ghostCharges -= 1;
+    }
+
     if (enemy.ghostCharges <= 0) {
+      delete enemy.ghostPhaseGraceUntilBeat;
       enemy.flashTtl = Math.max(enemy.flashTtl ?? 0, 0.22);
       enemy.flashDuration = 0.22;
       enemy.flashColor = getEnemyDef(enemy.type).color;
+    } else if (consumedPhase && Number.isFinite(currentBeat)) {
+      enemy.ghostPhaseGraceUntilBeat = currentBeat + GHOST_PHASE_GRACE_BEATS;
     }
+
     events.push({
       kind: "phase",
       lane: enemy.lane,
@@ -698,6 +716,31 @@ export function applyDotDamage(enemy, { damage, durationSeconds, source }, curre
   enemy.lastDamagedBeat = Math.floor(currentBeat);
 }
 
+export function applySlow(enemy, { multiplier, durationSeconds, source }) {
+  if (
+    !enemy ||
+    enemy.hp <= 0 ||
+    !Number.isFinite(multiplier) ||
+    !Number.isFinite(durationSeconds) ||
+    multiplier >= 1 ||
+    multiplier <= 0 ||
+    durationSeconds <= 0
+  ) {
+    return;
+  }
+
+  enemy.slowEffects = enemy.slowEffects ?? [];
+  enemy.slowEffects.push({
+    multiplier,
+    secondsRemaining: durationSeconds,
+    totalSeconds: durationSeconds,
+    source,
+  });
+  enemy.flashTtl = Math.max(enemy.flashTtl ?? 0, 0.16);
+  enemy.flashDuration = Math.max(enemy.flashDuration ?? 0.16, 0.16);
+  enemy.flashColor = getBulletDef("elapse").color;
+}
+
 export function applyImpactEffectsToTarget({
   effects = [],
   target,
@@ -711,6 +754,11 @@ export function applyImpactEffectsToTarget({
   effects.forEach((effect) => {
     if (effect.kind === "dot") {
       applyDotDamage(target, effect, currentBeat);
+      return;
+    }
+
+    if (effect.kind === "slow") {
+      applySlow(target, effect);
       return;
     }
 

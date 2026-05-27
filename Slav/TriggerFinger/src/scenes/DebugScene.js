@@ -167,6 +167,7 @@ export class DebugScene extends GameScene {
   showDebugPanel() {
     this.enableDebugBeatPreview();
     this.debugPanelOpen = true;
+    this.syncChunkDomainReductions();
     this.intermissionView.renderIntermission({
       isFirst: false,
       waveIndex: this.waveIndex,

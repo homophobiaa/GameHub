@@ -1,18 +1,18 @@
-import { LANES, MIN_ENEMY_Y } from "../config/gameplay.js";
+import { KNOCKBACK_RECOVERY_SECONDS, LANES, MIN_ENEMY_Y } from "../config/gameplay.js";
 import { clamp } from "../utils/math.js";
 
 const ENEMY_COLLISION_RADII = {
-  barrier: 0.043,
-  leap: 0.039,
-  default: 0.036,
+  barrier: 0.037,
+  leap: 0.034,
+  default: 0.031,
 };
 
 const LANE_BACKSTOP_Y = 0.02;
-const KNOCKBACK_TRANSFER_FRACTION = 0.78;
-const KNOCKBACK_TRANSFER_MINIMUM = 0.018;
-const KNOCKBACK_MIN_SPEED_PER_SECOND = 0.32;
-const KNOCKBACK_EASE_FRACTION = 0.34;
-const KNOCKBACK_MAX_STEP = 0.064;
+const KNOCKBACK_TRANSFER_FRACTION = 0.68;
+const KNOCKBACK_TRANSFER_MINIMUM = 0.012;
+export const KNOCKBACK_SIMULATION_STEP_SECONDS = 1 / 60;
+const KNOCKBACK_EASE_FRACTION_PER_REFERENCE_STEP = 0.16;
+const KNOCKBACK_MAX_SPEED_PER_SECOND = 0.018 / KNOCKBACK_SIMULATION_STEP_SECONDS;
 const KNOCKBACK_EPSILON = 0.0005;
 
 function collisionRadius(enemy) {
@@ -46,6 +46,10 @@ function findEnemyBehind(enemies, enemy) {
 
 function clearKnockback(enemy) {
   delete enemy.knockbackRemaining;
+  if (KNOCKBACK_RECOVERY_SECONDS > 0) {
+    enemy.knockbackRecoveryRemaining = KNOCKBACK_RECOVERY_SECONDS;
+    enemy.knockbackRecoveryDuration = KNOCKBACK_RECOVERY_SECONDS;
+  }
 }
 
 function moveEnemyY(enemy, y, { snapVisual = false } = {}) {
@@ -86,7 +90,36 @@ export function queueEnemyKnockback(enemy, amount) {
     return;
   }
 
+  delete enemy.knockbackRecoveryRemaining;
+  delete enemy.knockbackRecoveryDuration;
   enemy.knockbackRemaining = Math.max(enemy.knockbackRemaining ?? 0, 0) + amount;
+}
+
+export function updateKnockbackRecoverySpeedMultiplier(enemy, dt) {
+  const remaining = enemy?.knockbackRecoveryRemaining;
+  if (!Number.isFinite(remaining) || remaining <= 0) {
+    return 1;
+  }
+
+  const duration = Number.isFinite(enemy.knockbackRecoveryDuration) && enemy.knockbackRecoveryDuration > 0
+    ? enemy.knockbackRecoveryDuration
+    : KNOCKBACK_RECOVERY_SECONDS;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    delete enemy.knockbackRecoveryRemaining;
+    delete enemy.knockbackRecoveryDuration;
+    return 1;
+  }
+
+  const multiplier = clamp(1 - remaining / duration, 0, 1);
+  if (Number.isFinite(dt) && dt > 0) {
+    enemy.knockbackRecoveryRemaining = Math.max(0, remaining - dt);
+    if (enemy.knockbackRecoveryRemaining <= KNOCKBACK_EPSILON) {
+      delete enemy.knockbackRecoveryRemaining;
+      delete enemy.knockbackRecoveryDuration;
+    }
+  }
+
+  return multiplier;
 }
 
 export function placeEnemyAtLaneBack(enemy, enemies) {
@@ -124,19 +157,21 @@ export function resolveEnemyLaneSpacing(enemies) {
   }
 }
 
+function knockbackEaseFraction(dt) {
+  return 1 - (1 - KNOCKBACK_EASE_FRACTION_PER_REFERENCE_STEP) **
+    (dt / KNOCKBACK_SIMULATION_STEP_SECONDS);
+}
+
 function knockbackStep(enemy, dt) {
+  const remaining = enemy.knockbackRemaining;
   return Math.min(
-    enemy.knockbackRemaining,
-    Math.max(KNOCKBACK_MIN_SPEED_PER_SECOND * dt, enemy.knockbackRemaining * KNOCKBACK_EASE_FRACTION),
-    KNOCKBACK_MAX_STEP,
+    remaining,
+    remaining * knockbackEaseFraction(dt),
+    KNOCKBACK_MAX_SPEED_PER_SECOND * dt,
   );
 }
 
-export function updateEnemyKnockbacks(enemies, dt) {
-  if (!Number.isFinite(dt) || dt <= 0) {
-    return false;
-  }
-
+function updateEnemyKnockbackStep(enemies, dt) {
   const active = enemies
     .filter((enemy) =>
       collisionBlocks(enemy) &&
@@ -185,4 +220,19 @@ export function updateEnemyKnockbacks(enemies, dt) {
 
   resolveEnemyLaneSpacing(enemies);
   return true;
+}
+
+export function updateEnemyKnockbacks(enemies, dt) {
+  if (!Number.isFinite(dt) || dt <= 0) {
+    return false;
+  }
+
+  const stepCount = Math.max(1, Math.ceil(dt / KNOCKBACK_SIMULATION_STEP_SECONDS));
+  const stepDt = dt / stepCount;
+  let updated = false;
+  for (let stepIndex = 0; stepIndex < stepCount; stepIndex += 1) {
+    updated = updateEnemyKnockbackStep(enemies, stepDt) || updated;
+  }
+
+  return updated;
 }
