@@ -121,17 +121,17 @@
   },
   {
     "id": "filip-boqn",
-    "name": "Filip & Boyan's Game",
+    "name": "Emoji Logic Game",
     "creator": "Filip",
     "creatorGithub": "FilipVelkov08",
     "coCreators": [
       { "name": "Boyan", "github": "BoyanTsarski" }
     ],
-    "description": "A collaborative project from the Filip and Boyan team, built together for the SoftUni showcase.",
-    "screenshot": "",
-    "status": "In development",
+    "description": "Уеб базирана игра с тъмен премиум дизайн. Отгатни логиката зад 65+ емоджи задачи в 8 категории!",
+    "screenshot": "/games/FilipBoqn-EmojiLogicGame/filipboqn.png",
+    "status": "Playable",
     "tags": ["Student Project", "Collab", "Game"],
     "branch": "Filip-Boqn",
-    "playUrl": "#"
+    "playUrl": "/games/FilipBoqn-EmojiLogicGame/index.html"
   }
 ]
