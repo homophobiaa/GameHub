@@ -109,15 +109,15 @@
   },
   {
     "id": "viktor",
-    "name": "Viktor's Game",
+    "name": "Color Match Arena",
     "creator": "Viktor",
     "creatorGithub": "victordespodski",
-    "description": "An original student-made game crafted for the SoftUni showcase.",
-    "screenshot": "",
-    "status": "In development",
+    "description": "An original student-made game for matching colors.",
+    "screenshot": "/games/Viktor-ColorMatchArena/viktor.png",
+    "status": "Playable",
     "tags": ["Student Project", "Game"],
     "branch": "Viktor",
-    "playUrl": "#"
+    "playUrl": "/games/Viktor-ColorMatchArena/index.html"
   },
   {
     "id": "filip-boqn",
