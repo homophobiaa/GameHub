@@ -5,12 +5,11 @@ import { PageShell } from "@/components/PageShell";
 import { DIFFICULTIES, DIFFICULTY_LIST } from "@/lib/difficulty";
 import { formatDate, formatMs, formatNumber, formatPercent } from "@/lib/format";
 import { SFX } from "@/lib/audio";
-import type { Difficulty, PlayerProfile, ScoreRecord } from "@/types";
+import type { Difficulty, ScoreRecord } from "@/types";
 
 interface Props {
   scores: ScoreRecord[];
-  players: PlayerProfile[];
-  activePlayerId: string | null;
+  latestScoreId: string | null;
   onBack: () => void;
   onClearAll: () => void;
 }
@@ -20,20 +19,17 @@ type SortKey = "score" | "date" | "efficiency" | "time";
 
 export function LeaderboardScreen({
   scores,
-  players,
-  activePlayerId,
+  latestScoreId,
   onBack,
   onClearAll,
 }: Props) {
   const [diffFilter, setDiffFilter] = useState<DifficultyFilter>("all");
-  const [playerFilter, setPlayerFilter] = useState<string | "all">("all");
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [confirmingClear, setConfirmingClear] = useState(false);
 
   const filtered = useMemo(() => {
     let list = scores.slice();
     if (diffFilter !== "all") list = list.filter((s) => s.difficulty === diffFilter);
-    if (playerFilter !== "all") list = list.filter((s) => s.playerId === playerFilter);
     switch (sortBy) {
       case "score":
         list.sort((a, b) => b.score - a.score);
@@ -49,18 +45,13 @@ export function LeaderboardScreen({
         break;
     }
     return list;
-  }, [scores, diffFilter, playerFilter, sortBy]);
+  }, [scores, diffFilter, sortBy]);
 
-  // Player bests (filtered by difficulty)
+  // Top 3 all-time per difficulty filter
   const bests = useMemo(() => {
-    const map = new Map<string, ScoreRecord>();
     const source =
       diffFilter === "all" ? scores : scores.filter((s) => s.difficulty === diffFilter);
-    for (const s of source) {
-      const existing = map.get(s.playerId);
-      if (!existing || s.score > existing.score) map.set(s.playerId, s);
-    }
-    return [...map.values()].sort((a, b) => b.score - a.score);
+    return [...source].sort((a, b) => b.score - a.score).slice(0, 3);
   }, [scores, diffFilter]);
 
   return (
@@ -80,6 +71,11 @@ export function LeaderboardScreen({
             <Trophy className="h-5 w-5 text-royale-gold" />
             <span className="gradient-text">Leaderboard</span>
           </h1>
+          {latestScoreId && (
+            <span className="chip border-emerald-300/25 bg-emerald-300/10 text-emerald-200 text-xs">
+              Your score saved
+            </span>
+          )}
           <div />
         </div>
 
@@ -87,10 +83,7 @@ export function LeaderboardScreen({
         <div className="glass-card p-4 sm:p-5 mb-6">
           <div className="flex flex-wrap items-center gap-3">
             <FilterGroup label="Difficulty">
-              <Chip
-                active={diffFilter === "all"}
-                onClick={() => setDiffFilter("all")}
-              >
+              <Chip active={diffFilter === "all"} onClick={() => setDiffFilter("all")}>
                 All
               </Chip>
               {DIFFICULTY_LIST.map((d) => (
@@ -104,26 +97,11 @@ export function LeaderboardScreen({
               ))}
             </FilterGroup>
 
-            <FilterGroup label="Player">
-              <select
-                value={playerFilter}
-                onChange={(e) => setPlayerFilter(e.target.value as typeof playerFilter)}
-                className="input !py-2 max-w-[200px]"
-              >
-                <option value="all">All players</option>
-                {players.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </FilterGroup>
-
             <FilterGroup label="Sort">
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortKey)}
-                className="input !py-2 max-w-[200px]"
+                className="input !py-2 max-w-[180px]"
               >
                 <option value="score">Highest score</option>
                 <option value="date">Most recent</option>
@@ -165,14 +143,14 @@ export function LeaderboardScreen({
           </div>
         </div>
 
-        {/* Top players */}
+        {/* Top 3 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6">
-          {bests.slice(0, 3).map((b, i) => (
+          {bests.map((b, i) => (
             <PodiumCard
-              key={b.playerId}
+              key={b.id}
               record={b}
               rank={i + 1}
-              isYou={b.playerId === activePlayerId}
+              isLatest={b.id === latestScoreId}
             />
           ))}
           {bests.length === 0 && (
@@ -209,7 +187,7 @@ export function LeaderboardScreen({
               <tbody>
                 <AnimatePresence initial={false}>
                   {filtered.map((s, i) => {
-                    const isYou = s.playerId === activePlayerId;
+                    const isLatest = s.id === latestScoreId;
                     return (
                       <motion.tr
                         key={s.id}
@@ -218,7 +196,7 @@ export function LeaderboardScreen({
                         exit={{ opacity: 0 }}
                         transition={{ delay: Math.min(i, 12) * 0.015 }}
                         className={`border-t border-white/5 hover:bg-white/[0.03] ${
-                          isYou ? "bg-royale-violet/[0.08]" : ""
+                          isLatest ? "bg-royale-violet/[0.1]" : ""
                         }`}
                       >
                         <td className="px-4 py-2.5 tabular-nums text-white/55">
@@ -226,15 +204,15 @@ export function LeaderboardScreen({
                         </td>
                         <td className="px-4 py-2.5">
                           <span className="inline-flex items-center gap-2">
-                            {isYou && (
+                            {isLatest && (
                               <span className="h-1.5 w-1.5 rounded-full bg-royale-mint" />
                             )}
-                            <span className={isYou ? "text-white" : "text-white/85"}>
+                            <span className={isLatest ? "text-white" : "text-white/85"}>
                               {s.playerName}
                             </span>
-                            {isYou && (
+                            {isLatest && (
                               <span className="text-[10px] uppercase tracking-widest text-royale-mint">
-                                you
+                                new
                               </span>
                             )}
                           </span>
@@ -294,11 +272,11 @@ export function LeaderboardScreen({
 function PodiumCard({
   record,
   rank,
-  isYou,
+  isLatest,
 }: {
   record: ScoreRecord;
   rank: number;
-  isYou: boolean;
+  isLatest: boolean;
 }) {
   const accent =
     rank === 1
@@ -330,9 +308,9 @@ function PodiumCard({
       </div>
       <div className="mt-3 font-display text-2xl tracking-tight">
         {record.playerName}
-        {isYou && (
+        {isLatest && (
           <span className="ml-2 text-[10px] uppercase tracking-widest text-royale-mint align-middle">
-            you
+            new
           </span>
         )}
       </div>

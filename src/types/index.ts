@@ -71,11 +71,9 @@ export interface AppSettings {
 }
 
 export type ScreenId =
-  | "onboarding"
   | "menu"
-  | "difficulty"
+  | "new-player"
   | "game"
   | "result"
   | "leaderboard"
-  | "scoring"
-  | "profiles";
+  | "scoring";

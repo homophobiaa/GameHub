@@ -12,6 +12,8 @@ interface Props {
   disabled: boolean;
   onRodClick: (rod: RodId) => void;
   onDragMove: (from: RodId, to: RodId) => void;
+  /** Total height of the board container in px. Default 340. */
+  boardHeight?: number;
 }
 
 const RODS: RodId[] = [0, 1, 2];
@@ -25,7 +27,9 @@ export function GameBoard({
   disabled,
   onRodClick,
   onDragMove,
+  boardHeight = 340,
 }: Props) {
+  const rodHeight = boardHeight - 80;
   const rodRefs = useRef<Array<HTMLButtonElement | null>>([null, null, null]);
   const [hoveredRod, setHoveredRod] = useState<RodId | null>(null);
 
@@ -78,7 +82,7 @@ export function GameBoard({
     <div className="w-full">
       <div
         className="relative mx-auto flex items-end justify-center gap-3 sm:gap-6 lg:gap-10 pt-6"
-        style={{ height: 320 }}
+        style={{ height: boardHeight }}
       >
         {RODS.map((id) => {
           const stack = rods[id];
@@ -125,13 +129,13 @@ export function GameBoard({
               />
 
               {/* Rod pole */}
-              <div className="relative flex flex-col items-center" style={{ height: 260 }}>
+              <div className="relative flex flex-col items-center" style={{ height: rodHeight }}>
                 <span
                   aria-hidden
                   className="absolute left-1/2 -translate-x-1/2 bottom-0 rounded-full"
                   style={{
-                    width: 6,
-                    height: 260,
+                    width: 8,
+                    height: rodHeight,
                     background:
                       "linear-gradient(180deg, rgba(196,181,253,0.85) 0%, rgba(139,92,246,0.6) 60%, rgba(67,56,202,0.6) 100%)",
                     boxShadow:
