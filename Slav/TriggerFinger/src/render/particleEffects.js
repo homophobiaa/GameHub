@@ -8,14 +8,14 @@ export function drawDeathPuffParticles(ctx, {
   color,
   seed = 0,
 }) {
-  const particleCount = 18;
+  const particleCount = 12;
   const fade = 1 - clamp(progress, 0, 1);
   const easedProgress = 1 - (1 - progress) * (1 - progress);
 
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   ctx.shadowColor = color;
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = 0;
 
   for (let i = 0; i < particleCount; i += 1) {
     const angleSeed = seed * 0.097 + i * 0.618;
@@ -26,8 +26,8 @@ export function drawDeathPuffParticles(ctx, {
     const drift = Math.sin(progress * Math.PI + i * 1.7) * radius * 0.14;
     const particleX = x + Math.cos(angle) * distance + Math.cos(angle + Math.PI / 2) * drift;
     const particleY = y + Math.sin(angle) * distance + Math.sin(angle * 1.3) * radius * 0.12 * progress;
-    const particleRadius = radius * (0.1 + ((i * 7) % 5) * 0.018) * (1 - progress * 0.45);
-    const alpha = fade * (0.44 + (i % 4) * 0.08);
+    const particleRadius = radius * (0.08 + ((i * 7) % 5) * 0.014) * (1 - progress * 0.45);
+    const alpha = fade * (0.36 + (i % 4) * 0.06);
 
     ctx.globalAlpha = alpha * 0.78;
     ctx.fillStyle = "#080b0f";
@@ -109,7 +109,7 @@ export function drawPoisonParticles(ctx, {
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = color;
     ctx.shadowColor = color;
-    ctx.shadowBlur = 7;
+    ctx.shadowBlur = 0;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(particleX, particleY, particleRadius, 0, Math.PI * 2);

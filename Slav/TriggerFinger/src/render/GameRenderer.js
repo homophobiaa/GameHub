@@ -19,6 +19,18 @@ const LANE_CUE_LINGER_BEATS = 0.12;
 const POISON_TINT_COLOR = "#06371f";
 const POISON_FLASH_SECONDS = 0.28;
 const POISON_SUSTAIN_TINT = 0.2;
+const PLATING_COLOR = "#d9e2ef";
+const SHOCKWAVE_COLOR = "#58a9ff";
+
+function easeOutCubic(progress) {
+  const t = clamp(progress, 0, 1);
+  return 1 - (1 - t) ** 3;
+}
+
+function easeInQuart(progress) {
+  const t = clamp(progress, 0, 1);
+  return t ** 4;
+}
 
 function isPoisonDot(dot) {
   return String(dot?.source ?? "").startsWith("toxic");
@@ -64,6 +76,8 @@ export class GameRenderer {
     this.width = 0;
     this.height = 0;
     this.arena = { x: 0, width: 0 };
+    this.frameIndex = 0;
+    this.cueGradientCache = new Map();
   }
 
   resize() {
@@ -75,6 +89,7 @@ export class GameRenderer {
     this.width = rect.width;
     this.height = rect.height;
     this.updateArena();
+    this.cueGradientCache.clear();
   }
 
   updateArena() {
@@ -99,17 +114,20 @@ export class GameRenderer {
     suppressBeatBullets = false,
     beatFlashTtl = 0,
     beatFlashKind = "",
+    resources = null,
   }) {
     if (!this.width || !this.height) {
       return;
     }
 
+    this.frameIndex = (this.frameIndex + 1) % 120;
     this.ctx.clearRect(0, 0, this.width, this.height);
     this.drawArena(track, beat, {
       suppressBeatBullets,
       beatFlashTtl,
       beatFlashKind,
     });
+    this.drawResourceBars(resources);
     drawComboMeter(this, comboMultiplier, comboCap, beat);
     this.drawSpawnWarnings(spawnWarnings, beat);
     this.drawSpeedBoosts(speedBoosts, beat);
@@ -220,6 +238,7 @@ export class GameRenderer {
       const bandWidth = (9 + progress * 20) * recency;
       const color = bullet.elapseActive === false ? "#7b8390" : bullet.color;
       const expandsFromCenter = bullet.elapseHalf === "right";
+      const showGradientBands = index <= 1;
 
       for (const lane of LANES) {
         const laneX = this.arena.x + lane * laneWidth;
@@ -233,12 +252,17 @@ export class GameRenderer {
           : laneX + laneWidth - spread;
 
         ctx.fillStyle = color;
-        ctx.globalAlpha = alpha * 0.32;
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = alpha * (showGradientBands ? 0.28 : 0.13);
         ctx.fillRect(laneX + 2, 0, laneWidth - 4, laneHeight);
+
+        if (!showGradientBands) {
+          continue;
+        }
 
         ctx.globalAlpha = alpha;
         ctx.shadowColor = color;
-        ctx.shadowBlur = 14 + progress * 16;
+        ctx.shadowBlur = 5 + progress * 8;
         this.drawVerticalCueBand(leftX, bandWidth, color);
         this.drawVerticalCueBand(rightX, bandWidth, color);
       }
@@ -246,13 +270,35 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  drawVerticalCueBand(x, width, color) {
-    const ctx = this.ctx;
-    const gradient = ctx.createLinearGradient(x - width, 0, x + width, 0);
+  getVerticalCueGradient(x, width, color) {
+    const roundedX = Math.round(x);
+    const roundedWidth = Math.max(1, Math.round(width));
+    const key = `${roundedX}:${roundedWidth}:${color}`;
+    const cached = this.cueGradientCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const gradient = this.ctx.createLinearGradient(
+      roundedX - roundedWidth,
+      0,
+      roundedX + roundedWidth,
+      0,
+    );
     gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
     gradient.addColorStop(0.5, color);
     gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-    ctx.fillStyle = gradient;
+    this.cueGradientCache.set(key, gradient);
+    if (this.cueGradientCache.size > 160) {
+      const oldestKey = this.cueGradientCache.keys().next().value;
+      this.cueGradientCache.delete(oldestKey);
+    }
+    return gradient;
+  }
+
+  drawVerticalCueBand(x, width, color) {
+    const ctx = this.ctx;
+    ctx.fillStyle = this.getVerticalCueGradient(x, width, color);
     ctx.fillRect(x - width, 0, width * 2, this.height);
   }
 
@@ -285,6 +331,150 @@ export class GameRenderer {
       ctx.lineTo(x, this.height);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  drawResourceBars(resources) {
+    if (!resources) {
+      return;
+    }
+
+    const platingLayout = this.resourceBarLayout("plating");
+    this.drawResourceSegmentBar({
+      kind: "plating",
+      current: resources.plating,
+      max: resources.maxPlating,
+      y: platingLayout.y,
+      height: platingLayout.height,
+      color: platingLayout.color,
+      flashes: resources.flashes,
+      transition: resources.transitions?.plating,
+    });
+    const shockwaveLayout = this.resourceBarLayout("shockwaves");
+    this.drawResourceSegmentBar({
+      kind: "shockwaves",
+      current: resources.shockwaves,
+      max: resources.maxShockwaves,
+      y: shockwaveLayout.y,
+      height: shockwaveLayout.height,
+      color: shockwaveLayout.color,
+      flashes: resources.flashes,
+      transition: resources.transitions?.shockwaves,
+    });
+  }
+
+  resourceBarLayout(kind) {
+    return kind === "shockwaves"
+      ? { y: this.height - 20, height: 5, color: SHOCKWAVE_COLOR }
+      : { y: this.height - 31, height: 7, color: PLATING_COLOR };
+  }
+
+  drawResourceSegmentBar({ kind, current, max, y, height, color, flashes = [], transition = null }) {
+    const maxCount = Math.max(0, Math.floor(max ?? 0));
+    const currentCount = clamp(Math.floor(current ?? 0), 0, maxCount);
+    if (maxCount <= 0) {
+      return;
+    }
+
+    if (currentCount > 0) {
+      this.drawResourceSegments({
+        count: currentCount,
+        maxCount,
+        y,
+        height,
+        color,
+        alpha: kind === "shockwaves" ? 0.9 : 0.82,
+        transition,
+      });
+    }
+
+    flashes
+      .filter((flash) => flash.kind === kind)
+      .forEach((flash) => this.drawResourceFlash({ flash, y, height, color }));
+  }
+
+  resourceSegmentMetrics({ count, maxCount, index }) {
+    const pitch = this.arena.width / Math.max(1, maxCount);
+    const gap = clamp(pitch * 0.14, 2, 6);
+    const segmentWidth = Math.max(1, pitch - gap);
+    const startX = this.arena.x + (this.arena.width - count * pitch) / 2;
+    return {
+      x: startX + index * pitch + gap / 2,
+      width: segmentWidth,
+      pitch,
+    };
+  }
+
+  resourceSegmentCenter({ kind = "plating", count, maxCount, index }) {
+    const layout = this.resourceBarLayout(kind);
+    const metrics = this.resourceSegmentMetrics({ count, maxCount, index });
+    return {
+      x: metrics.x + metrics.width / 2,
+      y: layout.y + layout.height / 2,
+    };
+  }
+
+  transitionSegmentMetrics({ transition, targetMetrics, index }) {
+    if (!transition || (transition.toCount !== undefined && index >= transition.toCount)) {
+      return targetMetrics;
+    }
+
+    const progress = 1 - clamp(transition.ttl / Math.max(0.001, transition.duration ?? 0.24), 0, 1);
+    const eased = easeOutCubic(progress);
+    const fromMetrics = this.resourceSegmentMetrics({
+      count: Math.max(1, transition.fromCount ?? 1),
+      maxCount: Math.max(1, transition.maxCount ?? 1),
+      index,
+    });
+
+    return {
+      x: fromMetrics.x + (targetMetrics.x - fromMetrics.x) * eased,
+      width: fromMetrics.width + (targetMetrics.width - fromMetrics.width) * eased,
+    };
+  }
+
+  drawResourceSegments({ count, maxCount, y, height, color, alpha, transition = null }) {
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    for (let index = 0; index < count; index += 1) {
+      const targetMetrics = this.resourceSegmentMetrics({ count, maxCount, index });
+      const { x, width } = this.transitionSegmentMetrics({ transition, targetMetrics, index });
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, width, height);
+      ctx.globalAlpha = alpha * 0.32;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(x, y, width, Math.max(1, height * 0.38));
+    }
+    ctx.restore();
+  }
+
+  drawResourceFlash({ flash, y, height, color }) {
+    const progress = 1 - clamp(flash.ttl / Math.max(0.001, flash.duration ?? 0.36), 0, 1);
+    const alpha = 1 - progress;
+    const maxCount = Math.max(1, Math.floor(flash.maxCount ?? flash.countBefore ?? 1));
+    const count = Math.max(1, Math.floor(flash.countBefore ?? 1));
+    const index = clamp(Math.floor(flash.index ?? 0), 0, count - 1);
+    const { x, width } = this.resourceSegmentMetrics({ count, maxCount, index });
+    const expandX = 6 + progress * 18;
+    const expandY = 3 + progress * 10;
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = alpha * 0.72;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = color;
+    ctx.fillRect(x - expandX / 2, y - expandY / 2, width + expandX, height + expandY);
+    ctx.globalAlpha = alpha * 0.92;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - expandX / 2, y - expandY / 2, width + expandX, height + expandY);
     ctx.restore();
   }
 
@@ -419,14 +609,16 @@ export class GameRenderer {
       ctx.globalAlpha = 1;
 
       if (poison) {
-        drawPoisonParticles(ctx, {
-          x,
-          y,
-          radius,
-          beat,
-          enemyId: enemy.id,
-          intensity: poison.particleIntensity,
-        });
+        if (this.frameIndex % 2 === 0) {
+          drawPoisonParticles(ctx, {
+            x,
+            y,
+            radius,
+            beat,
+            enemyId: enemy.id,
+            intensity: poison.particleIntensity,
+          });
+        }
       }
 
       if (enemy.flashTtl > 0) {
@@ -669,6 +861,11 @@ export class GameRenderer {
         return;
       }
 
+      if (effect.kind === "platingTrail") {
+        this.drawPlatingTrailEffect(effect);
+        return;
+      }
+
       if (effect.kind === "projectile" || effect.kind === "piercingProjectile") {
         const group = projectileGroups.get(effect.lane) ?? [];
         group.push(effect);
@@ -775,6 +972,71 @@ export class GameRenderer {
     ctx.globalAlpha = alpha;
     ctx.beginPath();
     ctx.arc(head.x, head.y, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawPlatingTrailEffect(effect) {
+    const count = Math.max(1, Math.floor(effect.sourceCount ?? 1));
+    const maxCount = Math.max(1, Math.floor(effect.sourceMaxCount ?? count));
+    const source = this.resourceSegmentCenter({
+      kind: "plating",
+      count,
+      maxCount,
+      index: clamp(Math.floor(effect.sourceIndex ?? 0), 0, count - 1),
+    });
+    const progress = 1 - clamp(effect.ttl / Math.max(0.001, effect.duration ?? 0.38), 0, 1);
+    const headT = easeInQuart(progress);
+    const tailT = easeInQuart(clamp((progress - 0.2) / 0.8, 0, 1));
+    const targetX = effect.targetOffscreen
+      ? source.x + (source.x - (this.arena.x + this.arena.width / 2)) * 0.35
+      : this.laneCenter(effect.targetLane ?? 1);
+    const targetY = effect.targetOffscreen
+      ? -42
+      : this.yToScreen(effect.targetY ?? 0.45);
+    const xDistance = Math.abs(targetX - source.x);
+    const yDistance = Math.abs(targetY - source.y);
+    const controlX = (source.x + targetX) / 2 + clamp((targetX - source.x) * 0.08, -30, 30);
+    const controlLift = effect.targetOffscreen
+      ? 80
+      : clamp(yDistance * 0.18 + xDistance * 0.05, 24, 84);
+    const controlY = (source.y + targetY) / 2 - controlLift;
+    const pointAt = (t) => {
+      const inverse = 1 - t;
+      return {
+        x: inverse * inverse * source.x + 2 * inverse * t * controlX + t * t * targetX,
+        y: inverse * inverse * source.y + 2 * inverse * t * controlY + t * t * targetY,
+      };
+    };
+    const head = pointAt(headT);
+    const color = effect.color ?? PLATING_COLOR;
+    const alpha = 0.36 + Math.sin(progress * Math.PI) * 0.5;
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = color;
+    ctx.fillStyle = "#ffffff";
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 14;
+    ctx.globalAlpha = alpha * 0.64;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    const steps = 8;
+    for (let step = 0; step <= steps; step += 1) {
+      const segmentT = tailT + (headT - tailT) * (step / steps);
+      const point = pointAt(segmentT);
+      if (step === 0) {
+        ctx.moveTo(point.x, point.y);
+      } else {
+        ctx.lineTo(point.x, point.y);
+      }
+    }
+    ctx.stroke();
+
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 4.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }

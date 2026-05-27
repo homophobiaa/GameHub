@@ -1,18 +1,23 @@
 import { createEnemySpawnPattern, getEnemyPatternConsumeCount } from "./enemySpawnPatterns.js";
+import { STARTING_PLATING } from "../config/gameplay.js";
 import { snapToHalfBeat } from "../utils/beatMath.js";
 import { randomChoice, randomRange } from "../utils/random.js";
 
 const BASE_DURATION_BEATS = 22;
 const DURATION_PER_WAVE_BEATS = 2.6;
 const EARLY_DURATION_TRIM_BY_WAVE = {
+  0: 6,
   1: 6,
   2: 5,
   3: 4,
   4: 2,
 };
-const SPECIAL_START_FRACTION = 0.32;
+const BASE_BASIC_COUNT = 11;
+const BASIC_COUNT_PER_WAVE = 2.8;
+const SPECIAL_START_FRACTION = 0.16;
+const SPECIAL_END_FRACTION = 0.62;
 const SPECIAL_END_MARGIN_BEATS = 3;
-const SPECIAL_MIN_START_BEATS = 5;
+const SPECIAL_MIN_START_BEATS = 3;
 
 function randomLaneRule() {
   return Math.random() < 0.16 ? "same" : "random";
@@ -25,7 +30,10 @@ function getDurationBeats(waveIndex) {
 
 function createSpecialBeat(index, count, durationBeats) {
   const start = Math.max(SPECIAL_MIN_START_BEATS, durationBeats * SPECIAL_START_FRACTION);
-  const end = Math.max(start + count, durationBeats - SPECIAL_END_MARGIN_BEATS);
+  const end = Math.max(
+    start + count,
+    Math.min(durationBeats * SPECIAL_END_FRACTION, durationBeats - SPECIAL_END_MARGIN_BEATS),
+  );
   const progress = (index + 0.5) / Math.max(1, count);
   const jitter = randomRange(-0.8, 0.8);
   return snapToHalfBeat(Math.max(start, Math.min(durationBeats - 2, start + (end - start) * progress + jitter)));
@@ -50,13 +58,13 @@ function createBasicSpawns(count, durationBeats) {
   return spawns;
 }
 
-function createSpecialSetups(enemyPool, waveIndex, count, durationBeats, basicCount) {
+function createSpecialSetups(enemyPool, waveIndex, count, durationBeats, safeBasicBudget) {
   const specialTypes = enemyPool.filter((type) => type !== "basic");
   const setups = {
     spawns: [],
     patterns: [],
   };
-  let remainingBudget = basicCount;
+  let remainingBudget = safeBasicBudget;
   let previousType = null;
 
   for (let index = 0; index < count && specialTypes.length > 0; index += 1) {
@@ -81,12 +89,13 @@ function createSpecialSetups(enemyPool, waveIndex, count, durationBeats, basicCo
   return setups;
 }
 
-export function createProceduralWave(waveIndex, { enemyPool = ["basic"] } = {}) {
+export function createProceduralWave(waveIndex, { enemyPool = ["basic"], platingReserve = STARTING_PLATING } = {}) {
   const durationBeats = getDurationBeats(waveIndex);
-  const basicCount = 9 + Math.floor(waveIndex * 2.8);
-  const specialCount = Math.max(0, Math.floor((basicCount - 5) / 3));
+  const basicCount = BASE_BASIC_COUNT + Math.floor(waveIndex * BASIC_COUNT_PER_WAVE);
+  const safeBasicBudget = Math.max(0, basicCount - Math.max(0, Math.floor(platingReserve)));
+  const specialCount = Math.max(0, Math.floor((safeBasicBudget - 4) / 3));
   const basics = createBasicSpawns(basicCount, durationBeats);
-  const specials = createSpecialSetups(enemyPool, waveIndex, specialCount, durationBeats, basicCount);
+  const specials = createSpecialSetups(enemyPool, waveIndex, specialCount, durationBeats, safeBasicBudget);
   const spawns = [...basics, ...specials.spawns].sort((a, b) => a.beat - b.beat);
 
   return {

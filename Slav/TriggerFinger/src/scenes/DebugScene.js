@@ -252,6 +252,7 @@ export class DebugScene extends GameScene {
       enemyPool: this.enemyPool,
       healthMultiplier: this.enemyHealthMultiplier(),
       aspectGrantors: this.aspectGrantors,
+      platingReserve: this.plating,
     });
     this.wavesEnabled = true;
     this.active = true;
@@ -275,6 +276,7 @@ export class DebugScene extends GameScene {
   stopDebugWave() {
     this.waveRunner.finish();
     this.wavesEnabled = false;
+    this.resetPlatingFinisher();
     this.enableDebugBeatPreview();
     this.editorMessage = "Wave player stopped.";
   }
@@ -282,6 +284,7 @@ export class DebugScene extends GameScene {
   clearWave() {
     this.waveRunner.finish();
     this.wavesEnabled = false;
+    this.resetPlatingFinisher();
     this.score += 260 + this.waveIndex * 40;
     this.visualWaveProgress = 0;
     this.waveProgressFlashTtl = 0;

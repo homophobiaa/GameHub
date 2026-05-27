@@ -1,4 +1,3 @@
-import { WAVE_DEFS } from "../defs/waves.js";
 import { getAspectForSource } from "../defs/aspects.js";
 import { getEnemyDef } from "../defs/enemies.js";
 import { tryActivateEnemySpawnPattern } from "./enemySpawnPatterns.js";
@@ -67,10 +66,6 @@ function laneWithMostLive(enemies, blockedLanes) {
 }
 
 function getWaveDefinition(waveIndex, options = {}) {
-  if (waveIndex === 0) {
-    return WAVE_DEFS[0];
-  }
-
   return createProceduralWave(waveIndex, options);
 }
 
@@ -177,6 +172,13 @@ export class WaveRunner {
     return this.spawnSchedule
       .slice(this.spawnIndex)
       .some((spawn) => spawn.type === "barrier" && spawn.lane === lane);
+  }
+
+  hasPendingSpecials() {
+    return this.spawnSchedule
+      .slice(this.spawnIndex)
+      .some((spawn) => spawn.type !== "basic") ||
+      this.patterns.some((pattern) => !pattern.done && pattern.type !== "basic");
   }
 
   pendingLockedLanesFor(type) {
@@ -488,6 +490,21 @@ export class WaveRunner {
       }
     });
     return total;
+  }
+
+  remainingSpawnCount() {
+    return Math.max(0, this.spawnSchedule.length - this.spawnIndex) +
+      this.pendingPatternSpawnCount();
+  }
+
+  cancelPendingSpawns() {
+    const canceled = this.remainingSpawnCount();
+    this.spawnIndex = this.spawnSchedule.length;
+    this.patterns.forEach((pattern) => {
+      pattern.done = true;
+    });
+    this.hurrySpawnBeat = null;
+    return canceled;
   }
 
   getProgress(kills = 0, enemies = []) {

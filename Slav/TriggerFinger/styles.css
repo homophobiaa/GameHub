@@ -454,6 +454,7 @@ input {
 }
 
 .wave-progress-bar {
+  position: relative;
   height: 16px;
   overflow: hidden;
   border: 1px solid #30394a;
@@ -462,12 +463,31 @@ input {
 }
 
 .wave-progress-bar span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
   display: block;
   width: 0;
-  height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--good), var(--accent));
   transition: width 180ms ease-out;
+}
+
+.wave-progress-plating-fill {
+  right: 0;
+  z-index: 1;
+  background: linear-gradient(90deg, rgba(217, 226, 239, 0.42), rgba(248, 251, 255, 0.82));
+}
+
+.wave-progress-fill {
+  left: 0;
+  z-index: 2;
+  background: linear-gradient(90deg, var(--good), var(--accent));
+}
+
+.wave-progress-overlap-fill {
+  z-index: 3;
+  background: #ffffff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.5);
 }
 
 .wave-progress.is-complete-flash .wave-progress-bar {
@@ -475,7 +495,7 @@ input {
   box-shadow: 0 0 18px rgba(255, 255, 255, 0.7);
 }
 
-.wave-progress.is-complete-flash .wave-progress-bar span {
+.wave-progress.is-complete-flash .wave-progress-fill {
   background: #ffffff;
   box-shadow: 0 0 20px rgba(255, 255, 255, 0.95);
 }

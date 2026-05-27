@@ -77,6 +77,13 @@ const WAVE_CLEAR_OUTRO_SECONDS = 0.85;
 const WAVE_PROGRESS_FLASH_SECONDS = 0.5;
 const BEAT_BAR_WINDDOWN_SECONDS = 0.7;
 const ENEMY_DEATH_PUFF_SECONDS = 0.34;
+const RESOURCE_FLASH_SECONDS = 0.36;
+const RESOURCE_RECENTER_SECONDS = 0.24;
+const PLATING_FINISH_TRAIL_SECONDS = 0.38;
+const PLATING_FINISH_CLEAR_DELAY_SECONDS = 0.45;
+const PLATING_FINISH_OUTRO_EXTRA_SECONDS = 0.35;
+const PLATING_FINISH_COLOR = "#d9e2ef";
+const PLATING_FINISH_SPECIAL_GRACE_SECONDS = 1.0;
 
 export class GameScene {
   constructor({ manager, props = {} }) {
@@ -91,6 +98,11 @@ export class GameScene {
     this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
+    this.pendingPlatingStrikes = [];
+    this.platingFinisherActive = false;
+    this.platingFinisherTriggered = false;
+    this.platingFinisherClearDelay = 0;
+    this.platingFinisherDelayUntil = -Infinity;
     this.activeElapse = null;
     this.frameEnemyIndex = null;
     this.beat = 0;
@@ -103,6 +115,15 @@ export class GameScene {
     this.plating = this.maxPlating;
     this.maxShockwaves = 0;
     this.shockwaves = 0;
+    this.resourceFlashes = [];
+    this.resourceFlashState = {
+      plating: this.plating,
+      shockwaves: this.shockwaves,
+    };
+    this.resourceTransitions = {
+      plating: null,
+      shockwaves: null,
+    };
     this.waveIndex = 0;
     this.waveKills = 0;
     this.visualWaveProgress = 0;
@@ -153,7 +174,7 @@ export class GameScene {
         <div class="hud-item"><span class="hud-label">Wave</span><span class="hud-value" data-hud="wave">1</span></div>
         <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" data-hud="score">0</span></div>
         <div class="hud-item"><span class="hud-label">Combo</span><span class="hud-value" data-hud="combo">x1.00</span></div>
-        <div class="hud-item"><span class="hud-label">Plating</span><span class="hud-value" data-hud="plating">5</span></div>
+        <div class="hud-item"><span class="hud-label">Plating</span><span class="hud-value" data-hud="plating">3</span></div>
         <div class="hud-item"><span class="hud-label">Shock</span><span class="hud-value" data-hud="shockwaves">0</span></div>
         <div class="hud-item"><span class="hud-label">Next</span><span class="hud-value" data-hud="next">Stinger</span></div>
       </header>
@@ -1555,6 +1576,7 @@ export class GameScene {
     this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
+    this.resetPlatingFinisher();
     this.frameEnemyIndex = null;
     this.waveKills = 0;
     this.visualWaveProgress = 0;
@@ -1571,12 +1593,26 @@ export class GameScene {
       enemyPool: this.enemyPool,
       healthMultiplier: this.enemyHealthMultiplier(),
       aspectGrantors: this.aspectGrantors,
+      platingReserve: this.plating,
     });
   }
 
   resetWaveResources() {
     this.plating = this.maxPlating;
     this.shockwaves = this.maxShockwaves;
+    this.resetPlatingFinisher();
+    this.resourceFlashState.plating = this.plating;
+    this.resourceFlashState.shockwaves = this.shockwaves;
+    this.resourceTransitions.plating = null;
+    this.resourceTransitions.shockwaves = null;
+  }
+
+  resetPlatingFinisher() {
+    this.platingFinisherActive = false;
+    this.platingFinisherTriggered = false;
+    this.platingFinisherClearDelay = 0;
+    this.platingFinisherDelayUntil = -Infinity;
+    this.pendingPlatingStrikes = [];
   }
 
   prepareTrackForWaveStart() {
@@ -1643,32 +1679,52 @@ export class GameScene {
     this.updateHud();
     this.updateBeatIndicator();
     this.updateWaveProgressTracker(dt);
+    this.updateResourceVisuals(dt);
 
     if (!this.active) {
       return;
     }
 
     this.processBeatTicks();
-    if (this.shouldUpdateWaves()) {
+    let enemyIndex = this.frameEnemyIndex?.enemies === this.enemies
+      ? this.frameEnemyIndex
+      : createEnemyFrameIndex(this.enemies);
+    this.frameEnemyIndex = enemyIndex;
+    this.maybeTriggerPlatingFinisher(enemyIndex);
+    if (this.shouldUpdateWaves() && !this.platingFinisherActive) {
       this.waveRunner.update(this.beat, (enemy) => this.spawnEnemy(enemy), this.enemies, {
         currentSecond: this.runSeconds,
       });
     }
     this.updateEchoes();
     this.updateChipShots();
-    this.updateEnemies(dt, createEnemyFrameIndex(this.enemies));
-    this.updateElapse(dt, createEnemyFrameIndex(this.enemies));
+    enemyIndex = createEnemyFrameIndex(this.enemies);
+    this.frameEnemyIndex = enemyIndex;
+    this.updateEnemies(dt, enemyIndex);
+    if (this.activeElapse) {
+      enemyIndex = createEnemyFrameIndex(this.enemies);
+      this.frameEnemyIndex = enemyIndex;
+      this.updateElapse(dt, enemyIndex);
+    }
     this.updateEffects(dt);
     this.processPendingPiercingImpacts();
+    this.processPendingPlatingStrikes();
+    this.updatePlatingFinisherDelay(dt);
     this.removeDeadEnemies();
     this.processPendingAspectSpreads();
     this.frameEnemyIndex = createEnemyFrameIndex(this.enemies);
 
-    if (this.plating <= 0) {
+    this.maybeTriggerPlatingFinisher(this.frameEnemyIndex);
+
+    if (this.plating <= 0 && !this.platingFinisherActive && !this.platingFinisherTriggered) {
       this.endRun();
     }
 
-    if (this.waveRunner.isComplete(this.frameEnemyIndex) && !this.waveClearOutro) {
+    if (
+      this.waveRunner.isComplete(this.frameEnemyIndex) &&
+      !this.waveClearOutro &&
+      !this.hasPendingPlatingFinish()
+    ) {
       this.beginWaveClearOutro();
     }
   }
@@ -1701,6 +1757,13 @@ export class GameScene {
   spawnEnemy(enemy) {
     placeEnemyAtLaneBack(enemy, this.enemies);
     this.enemies.push(enemy);
+    this.frameEnemyIndex = null;
+    if (enemy.type !== "basic") {
+      this.platingFinisherDelayUntil = Math.max(
+        this.platingFinisherDelayUntil,
+        this.runSeconds + PLATING_FINISH_SPECIAL_GRACE_SECONDS,
+      );
+    }
     resolveEnemyLaneSpacing(this.enemies);
   }
 
@@ -1742,6 +1805,120 @@ export class GameScene {
     return true;
   }
 
+  hasPendingPlatingFinish() {
+    return this.pendingPlatingStrikes.length > 0 || this.platingFinisherClearDelay > 0;
+  }
+
+  updatePlatingFinisherDelay(dt) {
+    if (this.pendingPlatingStrikes.length > 0 || this.platingFinisherClearDelay <= 0) {
+      return;
+    }
+
+    this.platingFinisherClearDelay = Math.max(0, this.platingFinisherClearDelay - dt);
+  }
+
+  remainingWaveEnemyCount(enemyIndex = createEnemyFrameIndex(this.enemies)) {
+    if (!this.waveRunner.active) {
+      return 0;
+    }
+
+    const live = enemyIndex.liveCount();
+    return live + this.waveRunner.remainingSpawnCount();
+  }
+
+  maybeTriggerPlatingFinisher(enemyIndex = createEnemyFrameIndex(this.enemies)) {
+    if (
+      this.platingFinisherActive ||
+      this.waveClearOutro ||
+      !this.waveRunner.active ||
+      this.plating <= 0 ||
+      this.waveRunner.hasPendingSpecials?.() ||
+      this.runSeconds < this.platingFinisherDelayUntil
+    ) {
+      return false;
+    }
+
+    const remaining = this.remainingWaveEnemyCount(enemyIndex);
+    if (remaining <= 0 || this.plating < remaining) {
+      return false;
+    }
+
+    this.startPlatingFinisher();
+    return true;
+  }
+
+  startPlatingFinisher() {
+    const platingBefore = Math.max(0, Math.floor(this.plating));
+    const maxPlating = Math.max(this.maxPlating, platingBefore, 1);
+    const liveTargets = createEnemyFrameIndex(this.enemies)
+      .liveEnemies()
+      .sort((a, b) => b.y - a.y);
+    const canceledSpawns = this.waveRunner.cancelPendingSpawns();
+    const strikeCount = Math.max(platingBefore, liveTargets.length + canceledSpawns);
+    const arrivalSecond = this.runSeconds + PLATING_FINISH_TRAIL_SECONDS;
+
+    this.platingFinisherActive = true;
+    this.platingFinisherTriggered = true;
+    this.activeElapse = null;
+    this.pendingChipShots = [];
+    this.pendingPiercingImpacts = [];
+    this.plating = 0;
+    this.trackResourceLoss("plating", this.plating, maxPlating);
+
+    for (let index = 0; index < strikeCount; index += 1) {
+      const target = liveTargets[index] ?? null;
+      const strike = {
+        arrivalSecond,
+        targetId: target?.id ?? null,
+      };
+      this.pendingPlatingStrikes.push(strike);
+      this.effects.push({
+        kind: "platingTrail",
+        sourceIndex: index % Math.max(1, platingBefore),
+        sourceCount: platingBefore,
+        sourceMaxCount: maxPlating,
+        targetId: target?.id ?? null,
+        targetLane: target?.lane ?? null,
+        targetY: target ? target.visualY ?? target.y : null,
+        targetOffscreen: !target,
+        color: PLATING_FINISH_COLOR,
+        ttl: PLATING_FINISH_TRAIL_SECONDS,
+        duration: PLATING_FINISH_TRAIL_SECONDS,
+      });
+    }
+  }
+
+  processPendingPlatingStrikes() {
+    if (this.pendingPlatingStrikes.length === 0) {
+      return;
+    }
+
+    const ready = [];
+    this.pendingPlatingStrikes = this.pendingPlatingStrikes.filter((strike) => {
+      if (strike.arrivalSecond <= this.runSeconds) {
+        ready.push(strike);
+        return false;
+      }
+
+      return true;
+    });
+
+    ready.forEach((strike) => {
+      const target = this.enemies.find((enemy) => enemy.id === strike.targetId);
+      if (target?.hp > 0) {
+        target.hp = 0;
+        target.flashTtl = Math.max(target.flashTtl ?? 0, 0.16);
+        target.flashDuration = 0.16;
+        target.flashColor = PLATING_FINISH_COLOR;
+      }
+    });
+
+    if (this.pendingPlatingStrikes.length === 0) {
+      this.platingFinisherActive = false;
+      this.platingFinisherClearDelay = PLATING_FINISH_CLEAR_DELAY_SECONDS;
+    }
+  }
+
   beginWaveClearOutro() {
     this.active = false;
     this.activeElapse = null;
@@ -1749,7 +1926,8 @@ export class GameScene {
     this.shockwaves = this.maxShockwaves;
     this.pendingChipShots = [];
     this.waveClearOutro = true;
-    this.waveClearOutroTimer = WAVE_CLEAR_OUTRO_SECONDS;
+    this.waveClearOutroTimer = WAVE_CLEAR_OUTRO_SECONDS +
+      (this.platingFinisherTriggered ? PLATING_FINISH_OUTRO_EXTRA_SECONDS : 0);
     this.waveProgressFlashTtl = WAVE_PROGRESS_FLASH_SECONDS;
     this.beatBarWinddownTtl = BEAT_BAR_WINDDOWN_SECONDS;
     this.visualWaveProgress = 1;
@@ -1839,7 +2017,7 @@ export class GameScene {
     updateDamageOverTime(enemyIndex, dt, this.beat, dotEvents);
     this.consumeCombatEvents(dotEvents, "dot");
 
-    const movementDt = this.areEnemiesPaused() ? 0 : dt;
+    const movementDt = this.areEnemiesPaused() || this.platingFinisherActive ? 0 : dt;
 
     this.enemies.forEach((enemy) => {
       if (enemy.hp <= 0) {
@@ -1863,8 +2041,10 @@ export class GameScene {
         movementDt;
     });
 
-    updateEnemyKnockbacks(this.enemies, movementDt);
-    resolveEnemyLaneSpacing(this.enemies);
+    const knockbacksResolvedSpacing = updateEnemyKnockbacks(this.enemies, movementDt);
+    if (!knockbacksResolvedSpacing) {
+      resolveEnemyLaneSpacing(this.enemies);
+    }
 
     this.enemies.forEach((enemy) => {
       if (enemy.hp <= 0) {
@@ -1872,7 +2052,12 @@ export class GameScene {
       }
 
       enemy.visualY ??= enemy.y;
-      enemy.visualY += (enemy.y - enemy.visualY) * Math.min(1, dt * 9);
+      if (enemy.snapVisualY) {
+        enemy.visualY = enemy.y;
+        delete enemy.snapVisualY;
+      } else {
+        enemy.visualY += (enemy.y - enemy.visualY) * Math.min(1, dt * 9);
+      }
       if (enemy.y >= ENEMY_BREACH_Y) {
         enemy.hp = 0;
         if (this.canTakeDamage()) {
@@ -1894,7 +2079,7 @@ export class GameScene {
     this.effects = this.effects
       .map((effect) => {
         const nextEffect = { ...effect, ttl: effect.ttl - dt };
-        if (nextEffect.kind === "aspectTrail") {
+        if (nextEffect.kind === "aspectTrail" || nextEffect.kind === "platingTrail") {
           const target = this.enemies.find((enemy) => enemy.id === nextEffect.targetId);
           if (target?.hp > 0) {
             nextEffect.targetLane = target.lane;
@@ -2540,6 +2725,7 @@ export class GameScene {
     this.pendingChipShots = [];
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
+    this.resetPlatingFinisher();
     this.frameEnemyIndex = null;
     this.score += 260 + this.waveIndex * 40;
     this.waveIndex += 1;
@@ -2613,11 +2799,61 @@ export class GameScene {
       el: this.progressEl,
       dt,
       progress,
+      platingCoverage: this.plating,
       waveIndex: this.waveIndex,
       waveClearOutro: this.waveClearOutro,
       flashTtl: this.waveProgressFlashTtl,
       visualProgress: this.visualWaveProgress,
     });
+  }
+
+  updateResourceVisuals(dt = 0) {
+    this.trackResourceLoss("plating", this.plating, this.maxPlating);
+    this.trackResourceLoss("shockwaves", this.shockwaves, this.maxShockwaves);
+    this.resourceFlashes = this.resourceFlashes
+      .map((flash) => ({ ...flash, ttl: flash.ttl - dt }))
+      .filter((flash) => flash.ttl > 0);
+    Object.entries(this.resourceTransitions).forEach(([kind, transition]) => {
+      if (!transition) {
+        return;
+      }
+
+      const nextTransition = { ...transition, ttl: transition.ttl - dt };
+      this.resourceTransitions[kind] = nextTransition.ttl > 0 ? nextTransition : null;
+    });
+  }
+
+  trackResourceLoss(kind, value, maxValue) {
+    const current = Math.max(0, Math.floor(value ?? 0));
+    const previous = this.resourceFlashState[kind] ?? current;
+    if (current < previous) {
+      const maxCount = Math.max(maxValue ?? previous, previous, 1);
+      this.addResourceLossFlashes(kind, previous, current, maxCount);
+      this.resourceTransitions[kind] = {
+        fromCount: previous,
+        toCount: current,
+        maxCount,
+        ttl: RESOURCE_RECENTER_SECONDS,
+        duration: RESOURCE_RECENTER_SECONDS,
+      };
+    } else if (current > previous) {
+      this.resourceTransitions[kind] = null;
+    }
+
+    this.resourceFlashState[kind] = current;
+  }
+
+  addResourceLossFlashes(kind, previous, current, maxCount) {
+    for (let index = current; index < previous; index += 1) {
+      this.resourceFlashes.push({
+        kind,
+        index,
+        countBefore: previous,
+        maxCount,
+        ttl: RESOURCE_FLASH_SECONDS,
+        duration: RESOURCE_FLASH_SECONDS,
+      });
+    }
   }
 
   render() {
@@ -2638,6 +2874,14 @@ export class GameScene {
       suppressBeatBullets: this.suppressBeatBullets,
       beatFlashTtl: this.beatFlashTtl,
       beatFlashKind: this.beatFlashKind,
+      resources: {
+        plating: Math.max(0, this.plating),
+        maxPlating: this.maxPlating,
+        shockwaves: this.shockwaves,
+        maxShockwaves: this.maxShockwaves,
+        flashes: this.resourceFlashes,
+        transitions: this.resourceTransitions,
+      },
     });
   }
 

@@ -111,9 +111,9 @@ function createWorkshopChoices(track, runState = {}) {
   return [
     {
       kind: "repair",
-      amount: 5,
-      title: "+5 Plating",
-      copy: "Raises wave-start plating by five.",
+      amount: 3,
+      title: "+3 Plating",
+      copy: "Raises wave-start plating by three.",
     },
     ...pickRandom(rotatingChoices, 2),
   ];
@@ -201,7 +201,7 @@ export function applyUpgradeChoice(track, choice, runState = {}) {
   }
 
   if (choice.kind === "repair") {
-    runState.maxPlating = (runState.maxPlating ?? runState.plating ?? STARTING_PLATING) + (choice.amount ?? 5);
+    runState.maxPlating = (runState.maxPlating ?? runState.plating ?? STARTING_PLATING) + (choice.amount ?? 3);
     runState.plating = runState.maxPlating;
   }
 

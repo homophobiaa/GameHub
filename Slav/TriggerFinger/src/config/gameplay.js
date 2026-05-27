@@ -1,7 +1,7 @@
 export const LANES = [0, 1, 2];
 export const LANE_COUNT = LANES.length;
 
-export const STARTING_PLATING = 5;
+export const STARTING_PLATING = 3;
 export const SHOCKWAVE_MIN_Y = 0.65;
 
 export const PERFECT_WINDOW_BEATS = 0.08;

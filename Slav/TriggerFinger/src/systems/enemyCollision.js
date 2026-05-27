@@ -2,15 +2,17 @@ import { LANES, MIN_ENEMY_Y } from "../config/gameplay.js";
 import { clamp } from "../utils/math.js";
 
 const ENEMY_COLLISION_RADII = {
-  barrier: 0.057,
-  leap: 0.051,
-  default: 0.048,
+  barrier: 0.043,
+  leap: 0.039,
+  default: 0.036,
 };
 
 const LANE_BACKSTOP_Y = 0.02;
-const KNOCKBACK_TRANSFER_FRACTION = 0.55;
-const KNOCKBACK_SPEED_PER_SECOND = 1.25;
-const KNOCKBACK_MAX_STEP = 0.028;
+const KNOCKBACK_TRANSFER_FRACTION = 0.78;
+const KNOCKBACK_TRANSFER_MINIMUM = 0.018;
+const KNOCKBACK_MIN_SPEED_PER_SECOND = 0.32;
+const KNOCKBACK_EASE_FRACTION = 0.34;
+const KNOCKBACK_MAX_STEP = 0.064;
 const KNOCKBACK_EPSILON = 0.0005;
 
 function collisionRadius(enemy) {
@@ -44,6 +46,39 @@ function findEnemyBehind(enemies, enemy) {
 
 function clearKnockback(enemy) {
   delete enemy.knockbackRemaining;
+}
+
+function moveEnemyY(enemy, y, { snapVisual = false } = {}) {
+  if (!Number.isFinite(y) || Math.abs(enemy.y - y) <= KNOCKBACK_EPSILON) {
+    return;
+  }
+
+  enemy.y = y;
+  if (snapVisual) {
+    enemy.snapVisualY = true;
+  }
+}
+
+function resolveBackstopPressure(stack) {
+  const backIndex = stack.length - 1;
+  const back = stack[backIndex];
+  if (!back || back.y >= LANE_BACKSTOP_Y) {
+    return;
+  }
+
+  moveEnemyY(back, LANE_BACKSTOP_Y);
+  let pusher = back;
+
+  for (let index = backIndex - 1; index >= 0; index -= 1) {
+    const current = stack[index];
+    const minY = pusher.y + minSpacing(current, pusher);
+    if (current.y >= minY - KNOCKBACK_EPSILON) {
+      break;
+    }
+
+    moveEnemyY(current, minY);
+    pusher = current;
+  }
 }
 
 export function queueEnemyKnockback(enemy, amount) {
@@ -81,25 +116,25 @@ export function resolveEnemyLaneSpacing(enemies) {
       const current = stack[index];
       const maxY = front.y - minSpacing(front, current);
       if (current.y > maxY) {
-        current.y = maxY;
+        moveEnemyY(current, maxY);
       }
     }
 
-    const back = stack.at(-1);
-    if (!back || back.y >= LANE_BACKSTOP_Y) {
-      continue;
-    }
-
-    const shift = LANE_BACKSTOP_Y - back.y;
-    stack.forEach((enemy) => {
-      enemy.y += shift;
-    });
+    resolveBackstopPressure(stack);
   }
+}
+
+function knockbackStep(enemy, dt) {
+  return Math.min(
+    enemy.knockbackRemaining,
+    Math.max(KNOCKBACK_MIN_SPEED_PER_SECOND * dt, enemy.knockbackRemaining * KNOCKBACK_EASE_FRACTION),
+    KNOCKBACK_MAX_STEP,
+  );
 }
 
 export function updateEnemyKnockbacks(enemies, dt) {
   if (!Number.isFinite(dt) || dt <= 0) {
-    return;
+    return false;
   }
 
   const active = enemies
@@ -109,17 +144,17 @@ export function updateEnemyKnockbacks(enemies, dt) {
     )
     .sort((a, b) => b.y - a.y);
 
+  if (active.length === 0) {
+    return false;
+  }
+
   active.forEach((enemy) => {
     if ((enemy.knockbackRemaining ?? 0) <= KNOCKBACK_EPSILON) {
       clearKnockback(enemy);
       return;
     }
 
-    const step = Math.min(
-      enemy.knockbackRemaining,
-      KNOCKBACK_SPEED_PER_SECOND * dt,
-      KNOCKBACK_MAX_STEP,
-    );
+    const step = knockbackStep(enemy, dt);
     const behind = findEnemyBehind(enemies, enemy);
     const collisionY = behind ? behind.y + minSpacing(enemy, behind) : LANE_BACKSTOP_Y;
     const targetY = clamp(enemy.y - step, LANE_BACKSTOP_Y, 0.98);
@@ -127,14 +162,17 @@ export function updateEnemyKnockbacks(enemies, dt) {
     if (targetY <= collisionY + KNOCKBACK_EPSILON) {
       const allowedStep = Math.max(0, enemy.y - collisionY);
       const blockedStep = Math.max(0, step - allowedStep);
-      enemy.y = Math.max(collisionY, LANE_BACKSTOP_Y);
+      moveEnemyY(enemy, Math.max(collisionY, LANE_BACKSTOP_Y), { snapVisual: true });
       enemy.knockbackRemaining = Math.max(0, enemy.knockbackRemaining - step);
 
       if (behind && blockedStep > KNOCKBACK_EPSILON) {
-        queueEnemyKnockback(behind, blockedStep * KNOCKBACK_TRANSFER_FRACTION);
+        queueEnemyKnockback(
+          behind,
+          Math.max(blockedStep * KNOCKBACK_TRANSFER_FRACTION, KNOCKBACK_TRANSFER_MINIMUM),
+        );
       }
     } else {
-      enemy.y = targetY;
+      moveEnemyY(enemy, targetY, { snapVisual: true });
       enemy.knockbackRemaining = Math.max(0, enemy.knockbackRemaining - step);
     }
 
@@ -146,4 +184,5 @@ export function updateEnemyKnockbacks(enemies, dt) {
   });
 
   resolveEnemyLaneSpacing(enemies);
+  return true;
 }
