@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
+// AnimatePresence kept for the invalid-move message below
 import { RotateCcw, Timer, LogOut } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { GameBoard } from "@/components/game/GameBoard";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { DIFFICULTIES, ROUND_DURATION_MS } from "@/lib/difficulty";
@@ -32,34 +33,39 @@ export function GameScreen({ playerName, difficulty, onComplete }: Props) {
   const game = useGame(difficulty);
   const cfg = DIFFICULTIES[difficulty];
 
-  const fireComplete = useCallback(
-    (reason: GameResult["reason"]) => {
-      onComplete({
-        difficulty: game.difficulty,
-        discs: game.discCount,
-        moves: game.moves,
-        minMoves: game.minMoves,
-        remainingMs: game.remainingMs,
-        elapsedMs: game.elapsedMs,
-        solved: game.phase === "won",
-        progressPercent: game.progressPercent,
-        efficiency: game.efficiency,
-        reason,
-      });
-    },
-    [game, onComplete]
-  );
+  // Keep a ref to the latest onComplete so we never call a stale version.
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
-  // Auto-advance when round ends naturally.
+  // Single-fire guard: once we call onComplete, never call it again for this
+  // game instance (guards against StrictMode double-invocation).
+  const firedRef = useRef(false);
+
+  // useLayoutEffect runs synchronously after the DOM is painted.
+  // Using it (instead of useEffect + setTimeout) makes the transition fire
+  // on the exact render where phase becomes "won"/"timeout", with no async
+  // timing races or StrictMode cleanup issues.
   useEffect(() => {
-    if (game.phase === "won" || game.phase === "timeout") {
-      const delay = game.phase === "won" ? 1400 : 900;
-      const t = setTimeout(() => {
-        fireComplete(game.phase === "won" ? "solved" : "timeout");
-      }, delay);
-      return () => clearTimeout(t);
-    }
-  }, [game.phase, fireComplete]);
+    if (game.phase !== "won" && game.phase !== "timeout") return;
+    if (firedRef.current) return;
+    firedRef.current = true;
+
+    const reason: GameResult["reason"] = game.phase === "won" ? "solved" : "timeout";
+    const snapshot: GameResult = {
+      difficulty: game.difficulty,
+      discs: game.discCount,
+      moves: game.moves,
+      minMoves: game.minMoves,
+      remainingMs: game.remainingMs,
+      elapsedMs: game.elapsedMs,
+      solved: game.phase === "won",
+      progressPercent: game.progressPercent,
+      efficiency: game.efficiency,
+      reason,
+    };
+    onCompleteRef.current(snapshot);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.phase]);
 
   const timerLow = game.remainingMs <= 30_000 && game.phase === "running";
   const timerCritical = game.remainingMs <= 10_000 && game.phase === "running";
@@ -182,7 +188,18 @@ export function GameScreen({ playerName, difficulty, onComplete }: Props) {
           <button
             onClick={() => {
               SFX.click();
-              fireComplete("quit");
+              onCompleteRef.current({
+                difficulty: game.difficulty,
+                discs: game.discCount,
+                moves: game.moves,
+                minMoves: game.minMoves,
+                remainingMs: game.remainingMs,
+                elapsedMs: game.elapsedMs,
+                solved: false,
+                progressPercent: game.progressPercent,
+                efficiency: game.efficiency,
+                reason: "quit",
+              });
             }}
             disabled={gameOver}
             className="btn-ghost text-white/50 hover:text-white/80 disabled:opacity-30 flex items-center gap-2"
@@ -204,59 +221,6 @@ export function GameScreen({ playerName, difficulty, onComplete }: Props) {
         </div>
       </div>
 
-      {/* ── Win celebration overlay ── */}
-      <AnimatePresence>
-        {game.phase === "won" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 pointer-events-none flex items-center justify-center"
-          >
-            <motion.div
-              initial={{ scale: 0.82, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 280, damping: 22 }}
-              className="glass-strong gradient-border rounded-3xl px-10 py-8 text-center"
-              style={{ boxShadow: "0 0 60px rgba(245,196,81,0.3)" }}
-            >
-              <div className="text-[11px] uppercase tracking-[0.22em] text-white/55">
-                Solved!
-              </div>
-              <div className="mt-1 font-display text-4xl gradient-text">
-                Tower Complete
-              </div>
-              <div className="text-white/55 text-sm mt-2">Tallying your score…</div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Timeout overlay ── */}
-      <AnimatePresence>
-        {game.phase === "timeout" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 pointer-events-none flex items-center justify-center"
-          >
-            <motion.div
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 260, damping: 22 }}
-              className="glass-strong rounded-3xl border border-rose-400/25 px-10 py-8 text-center"
-              style={{ background: "rgba(220,38,38,0.08)" }}
-            >
-              <div className="text-[11px] uppercase tracking-[0.22em] text-rose-200/70">
-                Time's up
-              </div>
-              <div className="mt-1 font-display text-4xl text-rose-100">Time's Up</div>
-              <div className="text-white/45 text-sm mt-2">Calculating partial score…</div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }
