@@ -37,15 +37,15 @@
   },
   {
     "id": "miroslav",
-    "name": "Direction Memory Game",
+    "name": "Aim Trainer",
     "creator": "Miroslav",
     "creatorGithub": "Dokimochi",
-    "description": "A challenging memory game where you must recall and repeat sequences of directions.",
-    "screenshot": "/games/Miroslav-DirectionMemoryGame/miroslav.png",
+    "description": "Aim trainer.",
+    "screenshot": "/games/Miroslav-AimTrainer/miroslav.png",
     "status": "Playable",
-    "tags": ["Memory", "Puzzle"],
+    "tags": ["Skill", "Muscle Memory"],
     "branch": "Miroslav",
-    "playUrl": "/games/Miroslav-DirectionMemoryGame/index.html"
+    "playUrl": "/games/Miroslav-AimTrainer/index.html"
   },
   {
     "id": "hristiqn",
