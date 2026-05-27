@@ -115,6 +115,7 @@ export class BeatTrack {
     this.inventory = initial.inventory;
     this.pieceOrder = [...initial.placements, ...initial.inventory].map((piece) => piece.uid);
     this.selectedUid = this.placements[0]?.uid ?? this.inventory[0]?.uid ?? null;
+    this.domainReductions = new Map();
     this.invalidateTrackCache();
     this.start(0);
   }
@@ -209,6 +210,10 @@ export class BeatTrack {
     return this.lastPlaceableBeat;
   }
 
+  setDomainReductions(reductions = new Map()) {
+    this.domainReductions = reductions;
+  }
+
   get currentEntry() {
     const placement = this.sortedPlacements[this.currentIndex];
     return placement ? this.createEntry(placement) : null;
@@ -240,9 +245,12 @@ export class BeatTrack {
 
   getDomain(piece, beat = piece.beat) {
     const def = getBulletDef(piece.id);
+    const reduction = this.domainReductions.get(piece.uid) ?? {};
+    const leadBeats = Math.max(0, (def.leadBeats ?? 0) - (reduction.lead ?? 0));
+    const followBeats = Math.max(0, getSlotFollowBeats(piece) - (reduction.follow ?? 0));
     return {
-      start: beat - (def.leadBeats ?? 0),
-      end: beat + getSlotFollowBeats(piece),
+      start: beat - leadBeats,
+      end: beat + followBeats,
     };
   }
 

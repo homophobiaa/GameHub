@@ -11,6 +11,8 @@ import {
   LANE_COUNT,
   LANES,
   LEAP_FIELD_COOLDOWN_SECONDS,
+  LEAP_MIN_TARGET_Y,
+  LEAP_SPAWN_PROGRESS_OFFSET,
 } from "../config/gameplay.js";
 import { toEnemyFrameIndex } from "./enemyFrameIndex.js";
 import { getLeapLandBeat } from "./leapMotion.js";
@@ -86,7 +88,7 @@ export class WaveRunner {
     this.hurrySpawnBeat = null;
     this.healthMultiplier = 1;
     this.aspectGrantors = [];
-    this.lastLeapFieldSecond = -Infinity;
+    this.lastLeapFieldSeconds = Array.from({ length: LANE_COUNT }, () => -Infinity);
     this.lastBarrierLaneSeconds = [-Infinity, -Infinity, -Infinity];
     this.nextPatternBeat = 0;
   }
@@ -99,7 +101,7 @@ export class WaveRunner {
     this.startBeat = currentBeat;
     this.spawnIndex = 0;
     this.hurrySpawnBeat = null;
-    this.lastLeapFieldSecond = -Infinity;
+    this.lastLeapFieldSeconds = Array.from({ length: LANE_COUNT }, () => -Infinity);
     this.lastBarrierLaneSeconds = [-Infinity, -Infinity, -Infinity];
     this.nextPatternBeat = 0;
     this.patterns = (this.wave.patterns ?? []).map((pattern, index) => ({
@@ -153,10 +155,13 @@ export class WaveRunner {
     this.queueSpawns(spawns);
   }
 
-  hasPendingLeapSpawn() {
-    return this.spawnSchedule
+  hasPendingLeapSpawn(lane = null) {
+    const pendingLeaps = this.spawnSchedule
       .slice(this.spawnIndex)
-      .some((spawn) => spawn.type === "leap");
+      .filter((spawn) => spawn.type === "leap");
+    return Number.isInteger(lane)
+      ? pendingLeaps.some((spawn) => spawn.lane === lane)
+      : pendingLeaps.length > 0;
   }
 
   getReservedLeapTargetIds(enemies) {
@@ -169,6 +174,20 @@ export class WaveRunner {
       .filter((enemy) => enemy.type === "leap" && enemy.leap && Number.isFinite(enemy.leap.targetId))
       .forEach((enemy) => reserved.add(enemy.leap.targetId));
     return reserved;
+  }
+
+  getSpawnedRatio(kills = 0, enemies = []) {
+    const progress = this.getProgress(kills, enemies);
+    return progress.total > 0
+      ? Math.max(0, Math.min(1, progress.spawned / progress.total))
+      : 0;
+  }
+
+  getLeapMinTargetY(kills = 0, enemies = []) {
+    return Math.max(
+      LEAP_MIN_TARGET_Y,
+      this.getSpawnedRatio(kills, enemies) - LEAP_SPAWN_PROGRESS_OFFSET,
+    );
   }
 
   hasPendingBarrierInLane(lane) {
@@ -199,6 +218,32 @@ export class WaveRunner {
       });
   }
 
+  updateRecentLeapLanes(enemies, currentSecond) {
+    liveEnemies(enemies)
+      .filter((enemy) => enemy.type === "leap")
+      .forEach((enemy) => {
+        this.lastLeapFieldSeconds[enemy.lane] = currentSecond;
+      });
+  }
+
+  getLeapBlockedLanes(currentSecond, enemies) {
+    const blocked = new Set();
+    liveEnemies(enemies)
+      .filter((enemy) => enemy.type === "leap")
+      .forEach((enemy) => blocked.add(enemy.lane));
+
+    for (const lane of LANES) {
+      if (
+        this.hasPendingLeapSpawn(lane) ||
+        currentSecond - this.lastLeapFieldSeconds[lane] < LEAP_FIELD_COOLDOWN_SECONDS
+      ) {
+        blocked.add(lane);
+      }
+    }
+
+    return [...blocked];
+  }
+
   getBarrierBlockedLanes(currentSecond, enemies) {
     const blocked = new Set();
     liveEnemies(enemies)
@@ -219,6 +264,7 @@ export class WaveRunner {
 
   queueReadyPatterns(localBeat, enemies, options = {}) {
     const currentSecond = options.currentSecond ?? localBeat;
+    const kills = options.kills ?? 0;
 
     this.patterns.forEach((pattern) => {
       if (pattern.done) {
@@ -233,14 +279,18 @@ export class WaveRunner {
         return;
       }
 
+      const blockedLeapLanes = pattern.pattern === "leapAmbush"
+        ? this.getLeapBlockedLanes(currentSecond, enemies)
+        : [];
       const leapSeatAvailable =
         pattern.pattern === "leapAmbush" &&
-        !this.hasPendingLeapSpawn() &&
-        currentSecond - this.lastLeapFieldSecond >= LEAP_FIELD_COOLDOWN_SECONDS;
+        blockedLeapLanes.length < LANE_COUNT;
       const result = tryActivateEnemySpawnPattern(pattern, {
         localBeat,
         enemies,
         leapSeatAvailable,
+        leapMinTargetY: this.getLeapMinTargetY(kills, enemies),
+        blockedLeapLanes,
         reservedLeapTargetIds: this.getReservedLeapTargetIds(enemies),
         blockedBarrierLanes:
           pattern.pattern === "crowdedBarrier"
@@ -383,13 +433,14 @@ export class WaveRunner {
     const localBeat = currentBeat - this.startBeat;
     const currentSecond = options.currentSecond ?? currentBeat;
     const enemyIndex = toEnemyFrameIndex(enemies);
-    if (liveEnemies(enemyIndex).some((enemy) => enemy.type === "leap")) {
-      this.lastLeapFieldSecond = currentSecond;
-    }
+    this.updateRecentLeapLanes(enemyIndex, currentSecond);
     this.updateRecentBarrierLanes(enemyIndex, currentSecond);
     const liveCount = liveEnemies(enemyIndex).length;
     const hasEnemies = liveCount > 0;
-    this.queueReadyPatterns(localBeat, enemyIndex, { currentSecond });
+    this.queueReadyPatterns(localBeat, enemyIndex, {
+      currentSecond,
+      kills: options.kills ?? 0,
+    });
     this.deferBlockedSpawns(localBeat);
     this.ensurePendingPatternSeed(localBeat, enemyIndex, currentSecond);
 
@@ -439,7 +490,7 @@ export class WaveRunner {
         aspectGrantors: this.aspectGrantors,
       }));
       if (spawn.type === "leap") {
-        this.lastLeapFieldSecond = currentSecond;
+        this.lastLeapFieldSeconds[spawn.lane] = currentSecond;
       }
       if (spawn.type === "barrier") {
         this.lastBarrierLaneSeconds[spawn.lane] = currentSecond;
@@ -552,7 +603,7 @@ export class WaveRunner {
     this.patterns = [];
     this.hurrySpawnBeat = null;
     this.aspectGrantors = [];
-    this.lastLeapFieldSecond = -Infinity;
+    this.lastLeapFieldSeconds = Array.from({ length: LANE_COUNT }, () => -Infinity);
     this.lastBarrierLaneSeconds = [-Infinity, -Infinity, -Infinity];
     this.nextPatternBeat = 0;
   }
@@ -594,6 +645,9 @@ export function createEnemy(type, lane, options = {}) {
     enemy.leap = {
       targetId,
       targetY: options.spawn.leapTargetY,
+      minTargetY: Number.isFinite(options.spawn.leapMinTargetY)
+        ? options.spawn.leapMinTargetY
+        : LEAP_MIN_TARGET_Y,
       destinationY: options.spawn.leapFallback ? options.spawn.leapTargetY : null,
       startBeat,
       landBeat: getLeapLandBeat(startBeat, options.spawn.leapTargetY),

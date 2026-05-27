@@ -39,6 +39,15 @@ export function summarizeChipEffects(chipEffects = []) {
       summary.pairShotDamageScale = Math.max(summary.pairShotDamageScale, def.timedShotDamageScale);
     }
 
+    if (Number.isFinite(def.slowAmount)) {
+      summary.elapseSlowStacks += 1;
+      const extraStacks = Math.max(0, summary.elapseSlowStacks - 1);
+      summary.elapseSlowAmount = def.slowAmount +
+        extraStacks * (def.slowAmountPerStack ?? 0);
+      summary.elapseSlowDurationSeconds = def.slowDurationSeconds +
+        extraStacks * (def.slowDurationPerStack ?? 0);
+    }
+
     if (Number.isFinite(def.radius)) {
       summary.brittleRadiusStacks += 1;
       summary.brittleRadius = def.radius +
@@ -58,6 +67,9 @@ export function summarizeChipEffects(chipEffects = []) {
     secondaryEffectScales: [],
     pairShotCount: 0,
     pairShotDamageScale: CHIP_TUNING.pairShotDamageScale,
+    elapseSlowStacks: 0,
+    elapseSlowAmount: 0,
+    elapseSlowDurationSeconds: 0,
     brittleRadiusStacks: 0,
     brittleRadius: 0,
     brittleDamageScale: CHIP_TUNING.secondaryEffectScale,
@@ -71,7 +83,9 @@ export function hasLineChipModifiers(chipSummary) {
 }
 
 export function hasImpactChipEffects(chipSummary) {
-  return chipSummary.brittleRadius > 0 || chipSummary.toxicDotDamage > 0;
+  return chipSummary.brittleRadius > 0 ||
+    chipSummary.toxicDotDamage > 0 ||
+    chipSummary.elapseSlowAmount > 0;
 }
 
 export function createToxicChipImpactEffects(chipSummary, beatSeconds = 1) {
@@ -89,6 +103,15 @@ export function createToxicChipImpactEffects(chipSummary, beatSeconds = 1) {
 
 export function createChipImpactEffects(chipSummary, { amount = 0, beatSeconds = 1 } = {}) {
   const effects = createToxicChipImpactEffects(chipSummary, beatSeconds);
+  if (chipSummary.elapseSlowAmount > 0 && chipSummary.elapseSlowDurationSeconds > 0) {
+    effects.push({
+      kind: "slow",
+      multiplier: Math.max(0.05, 1 - chipSummary.elapseSlowAmount),
+      durationSeconds: chipSummary.elapseSlowDurationSeconds,
+      source: "elapse-chunk",
+    });
+  }
+
   if (chipSummary.brittleRadius > 0 && amount > 0) {
     effects.push({
       kind: "impactRadius",

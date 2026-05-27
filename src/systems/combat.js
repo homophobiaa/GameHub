@@ -1,5 +1,6 @@
 import { getBulletDef } from "../defs/bullets.js";
 import {
+  createChipImpactEffects,
   elapseSecondaryDamagePerBeat,
   elapseSecondarySlowMultiplier,
   pairChipDamage,
@@ -232,6 +233,15 @@ export function resolveElapseStart({
   if (chipSummary.shellKnockback > 0) {
     knockEnemyBack(interceptor ? intendedTarget : damageTarget, chipSummary.shellKnockback);
   }
+  applyImpactEffectsToTarget({
+    effects: createChipImpactEffects(chipSummary, { amount: 0, beatSeconds }),
+    target: damageTarget,
+    enemies: enemyIndex,
+    lane,
+    y: intendedTarget.y,
+    currentBeat,
+    events,
+  });
 
   const secondaryTarget = chipSummary.stingerPierce > 0
     ? elapseBeamEnemies(enemyIndex, lane).find((enemy) => enemy.id !== intendedTarget.id)
@@ -335,6 +345,17 @@ export function resolveElapseFinish({
   const hit = hitClosestInLaneDetailed(enemyIndex, lane, amount, currentBeat, events);
   if (chipSummary.shellKnockback > 0 && hit.damageTarget && !hit.result?.passedThrough) {
     knockEnemyBack(hit.target ?? hit.damageTarget, chipSummary.shellKnockback);
+  }
+  if (hit.result?.damaged && hit.damageTarget) {
+    applyImpactEffectsToTarget({
+      effects: createChipImpactEffects(chipSummary, { amount, beatSeconds }),
+      target: hit.damageTarget,
+      enemies: enemyIndex,
+      lane,
+      y: hit.target?.y ?? PROJECTILE_END_Y,
+      currentBeat,
+      events,
+    });
   }
   addLaneProjectile(
     events,

@@ -343,10 +343,6 @@ input {
 .beat-strip {
   position: relative;
   z-index: 4;
-  display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 12px;
-  align-items: center;
   height: 54px;
   padding: 5px 12px 8px;
   border-bottom: 1px solid #252c38;
@@ -354,6 +350,10 @@ input {
 }
 
 .beat-count {
+  position: absolute;
+  z-index: 6;
+  left: 12px;
+  top: 50%;
   display: grid;
   width: 28px;
   height: 22px;
@@ -363,6 +363,7 @@ input {
   color: var(--accent);
   font-size: 0.82rem;
   font-weight: 900;
+  transform: translateY(-50%);
 }
 
 .beat-strip.is-pulsing .beat-count {
@@ -374,6 +375,7 @@ input {
 .beat-rail {
   position: relative;
   height: 38px;
+  margin-top: 3px;
   overflow: visible;
   border-radius: 6px;
   background: #10131a;
@@ -1008,24 +1010,112 @@ input {
   transform: translateX(-50%);
 }
 
-.chip-timeline-drop {
+.timeline-piece-chunk-layer {
   position: absolute;
-  top: 34px;
-  bottom: 28px;
-  width: 18px;
+  top: 38px;
+  width: 42px;
+  height: 42px;
   padding: 0;
   border: 0;
-  border-radius: 999px;
   background: transparent;
   pointer-events: none;
   transform: translateX(-50%);
-  z-index: 5;
+  z-index: 4;
+}
+
+.timeline-piece-chunk-layer.is-elapse-half {
+  width: 22px;
+}
+
+.timeline-piece-chunk-layer.is-elapse-left {
+  transform: translateX(-100%);
+}
+
+.timeline-piece-chunk-layer.is-elapse-right {
+  transform: translateX(0);
+}
+
+.chunk-corner-drop {
+  position: absolute;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.chunk-corner-shape {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: rgba(184, 193, 207, 0.12);
+  filter:
+    drop-shadow(1px 0 0 rgba(245, 234, 204, 0.7))
+    drop-shadow(-1px 0 0 rgba(39, 29, 19, 0.8))
+    drop-shadow(0 1px 0 rgba(39, 29, 19, 0.8));
+}
+
+.chunk-corner-drop.is-corner-top-left,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-top-left {
+  top: -3px;
+  left: -3px;
+}
+
+.chunk-corner-drop.is-corner-top-right,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-top-right {
+  top: -3px;
+  right: -3px;
+}
+
+.chunk-corner-drop.is-corner-bottom-right,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-bottom-right {
+  right: -3px;
+  bottom: -3px;
+}
+
+.chunk-corner-drop.is-corner-bottom-left,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-bottom-left {
+  bottom: -3px;
+  left: -3px;
+}
+
+.chunk-corner-drop.is-corner-top-left,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-top-left,
+.is-corner-top-left > .chunk-corner-shape,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-top-left > .scrap-chip-body,
+.drag-proxy.is-scrap-chip.is-corner-top-left > .scrap-chip-body {
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.chunk-corner-drop.is-corner-top-right,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-top-right,
+.is-corner-top-right > .chunk-corner-shape,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-top-right > .scrap-chip-body,
+.drag-proxy.is-scrap-chip.is-corner-top-right > .scrap-chip-body {
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+
+.chunk-corner-drop.is-corner-bottom-right,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-bottom-right,
+.is-corner-bottom-right > .chunk-corner-shape,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-bottom-right > .scrap-chip-body,
+.drag-proxy.is-scrap-chip.is-corner-bottom-right > .scrap-chip-body {
+  clip-path: polygon(100% 100%, 0 100%, 100% 0);
+}
+
+.chunk-corner-drop.is-corner-bottom-left,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-bottom-left,
+.is-corner-bottom-left > .chunk-corner-shape,
+.timeline-piece-chunk-layer .timeline-chip.is-corner-bottom-left > .scrap-chip-body,
+.drag-proxy.is-scrap-chip.is-corner-bottom-left > .scrap-chip-body {
+  clip-path: polygon(0 100%, 0 0, 100% 100%);
 }
 
 .timeline-drop:active,
-.timeline-piece:active,
-.chip-timeline-drop:active,
-.timeline-chip:active {
+.timeline-piece:active {
   transform: translateX(-50%);
 }
 
@@ -1055,30 +1145,31 @@ input {
   background: rgba(230, 93, 93, 0.18);
 }
 
-.timeline-body.is-chip-dragging .chip-timeline-drop {
+.timeline-body.is-chip-dragging .chunk-corner-drop {
+  opacity: 1;
   pointer-events: auto;
 }
 
-.timeline-body.is-chip-dragging .chip-timeline-drop:hover,
-.timeline-body.is-chip-dragging .chip-timeline-drop:focus-visible {
-  background: rgba(184, 193, 207, 0.08);
+.timeline-body.is-chip-dragging .chunk-corner-drop:hover .chunk-corner-shape,
+.timeline-body.is-chip-dragging .chunk-corner-drop:focus-visible .chunk-corner-shape {
+  background: rgba(184, 193, 207, 0.18);
 }
 
-.timeline-body.is-chip-dragging .chip-timeline-drop.is-valid-drop {
-  background: rgba(72, 211, 155, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(72, 211, 155, 0.46);
+.timeline-body.is-chip-dragging .chunk-corner-drop.is-valid-drop .chunk-corner-shape {
+  background: rgba(72, 211, 155, 0.32);
+  filter: drop-shadow(0 0 5px rgba(72, 211, 155, 0.4));
 }
 
-.timeline-body.is-chip-dragging .chip-timeline-drop.is-invalid-drop {
+.timeline-body.is-chip-dragging .chunk-corner-drop.is-invalid-drop {
   cursor: not-allowed;
 }
 
-.timeline-body.is-chip-dragging .chip-timeline-drop.is-valid-drop.is-hover-drop {
-  background: rgba(72, 211, 155, 0.26);
+.timeline-body.is-chip-dragging .chunk-corner-drop.is-valid-drop.is-hover-drop .chunk-corner-shape {
+  background: rgba(72, 211, 155, 0.48);
 }
 
-.timeline-body.is-chip-dragging .chip-timeline-drop.is-invalid-drop.is-hover-drop {
-  background: rgba(230, 93, 93, 0.18);
+.timeline-body.is-chip-dragging .chunk-corner-drop.is-invalid-drop.is-hover-drop .chunk-corner-shape {
+  background: rgba(230, 93, 93, 0.38);
 }
 
 .timeline-domain {
@@ -1281,17 +1372,31 @@ input {
 
 .drag-proxy.is-scrap-chip {
   width: 42px;
-  height: 54px;
+  height: 42px;
 }
 
 .drag-proxy.is-scrap-chip > .scrap-chip-body {
-  width: 10px;
-  height: 36px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--chip-color), #9aa1ad 72%);
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--chip-color), #edf2ff 36%);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  filter:
+    drop-shadow(1px 0 0 rgba(245, 234, 204, 0.82))
+    drop-shadow(-1px 0 0 rgba(39, 29, 19, 0.85))
+    drop-shadow(0 1px 0 rgba(39, 29, 19, 0.85));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 0 14px color-mix(in srgb, var(--chip-color), transparent 70%);
+    0 0 14px color-mix(in srgb, var(--chip-color), transparent 58%);
+}
+
+.drag-proxy.is-scrap-chip.is-corner-top-left > .scrap-chip-body,
+.drag-proxy.is-scrap-chip.is-corner-top-right > .scrap-chip-body,
+.drag-proxy.is-scrap-chip.is-corner-bottom-right > .scrap-chip-body,
+.drag-proxy.is-scrap-chip.is-corner-bottom-left > .scrap-chip-body {
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
 }
 
 .drag-proxy.is-elapse-left > .bullet-glyph {
@@ -1441,24 +1546,31 @@ input {
 .scrap-chip-token {
   flex: 0 0 auto;
   display: grid;
-  width: 20px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   place-items: center;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--chip-color), #8d95a3 58%);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--chip-color), #7d8491 74%);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   cursor: grab;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  box-shadow: none;
 }
 
 .timeline-chip {
   position: absolute;
-  top: 43px;
-  width: 18px;
-  height: 34px;
-  transform: translateX(-50%);
   z-index: 2;
+}
+
+.timeline-piece-chunk-layer .timeline-chip {
+  width: 21px;
+  height: 21px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: auto;
+  z-index: 3;
 }
 
 .timeline-chip.is-chip-arriving,
@@ -1472,16 +1584,40 @@ input {
 }
 
 .timeline-chip:active {
-  transform: translateX(-50%);
+  transform: none;
 }
 
 .scrap-chip-body {
   display: block;
-  width: 8px;
-  height: 28px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--chip-color), #b4bac4 78%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.24), transparent 44%),
+    color-mix(in srgb, var(--chip-color), #fff4c7 34%);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  filter:
+    drop-shadow(1px 0 0 rgba(245, 234, 204, 0.82))
+    drop-shadow(-1px 0 0 rgba(39, 29, 19, 0.82))
+    drop-shadow(0 1px 0 rgba(39, 29, 19, 0.82))
+    drop-shadow(0 0 7px color-mix(in srgb, var(--chip-color), transparent 54%));
+  box-shadow: none;
+}
+
+.timeline-piece-chunk-layer .timeline-chip > .scrap-chip-body {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.26), transparent 42%),
+    color-mix(in srgb, var(--chip-color), #ffe9a7 24%);
+  filter:
+    drop-shadow(1px 0 0 rgba(245, 234, 204, 0.9))
+    drop-shadow(-1px 0 0 rgba(39, 29, 19, 0.9))
+    drop-shadow(0 1px 0 rgba(39, 29, 19, 0.9))
+    drop-shadow(0 -1px 0 rgba(245, 234, 204, 0.5))
+    drop-shadow(0 0 5px color-mix(in srgb, var(--chip-color), transparent 48%));
+  box-shadow: none;
 }
 
 .scrap-chip-empty {

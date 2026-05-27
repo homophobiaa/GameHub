@@ -21,15 +21,18 @@ const POISON_FLASH_SECONDS = 0.28;
 const POISON_SUSTAIN_TINT = 0.2;
 const PLATING_COLOR = "#d9e2ef";
 const SHOCKWAVE_COLOR = "#58a9ff";
+const HEALTH_BAND_GREEN = "#45b86f";
+const HEALTH_BAND_YELLOW = "#d7c85a";
+const HEALTH_BAND_RED = "#f08a7f";
+const HEALTH_BAND_GHOST_PHASE = "#9f73ff";
+const HEALTH_BAND_SHRINK_SECONDS = 0.18;
+const GHOST_GRACE_DARKEN_AMOUNT = 0.52;
+const GHOST_GRACE_ALPHA_BASE = 0.18;
+const GHOST_GRACE_ALPHA_PULSE = 0.06;
 
 function easeOutCubic(progress) {
   const t = clamp(progress, 0, 1);
   return 1 - (1 - t) ** 3;
-}
-
-function easeInQuart(progress) {
-  const t = clamp(progress, 0, 1);
-  return t ** 4;
 }
 
 function isPoisonDot(dot) {
@@ -69,6 +72,53 @@ function getLeapScale(enemy, beat) {
   return 1 + Math.sin(progress * Math.PI) * 0.44;
 }
 
+function getEnemyBaseRadius(enemy) {
+  return enemy.type === "barrier" ? 25 : enemy.type === "leap" ? 23 : 21;
+}
+
+function getEnemyRenderMetrics(renderer, enemy, beat) {
+  const laneWidth = renderer.arena.width / LANE_COUNT;
+  const x = renderer.laneCenter(enemy.lane) + (enemy.visualLaneOffset ?? 0) * laneWidth;
+  const visualY = enemy.visualY ?? enemy.y;
+  const y = renderer.yToScreen(visualY);
+  const baseRadius = getEnemyBaseRadius(enemy);
+  const cheerLeading = enemy.type === "cheer" && enemy.cheerLeading !== false;
+  const cheerChangeProgress = enemy.cheerStateTtl > 0
+    ? 1 - clamp(enemy.cheerStateTtl / Math.max(0.001, enemy.cheerStateDuration ?? 0.22), 0, 1)
+    : 1;
+  const cheerPulse = enemy.cheerStateTtl > 0
+    ? Math.sin(cheerChangeProgress * Math.PI) * 0.12
+    : 0;
+  const radius = baseRadius *
+    (enemy.type === "cheer" && !cheerLeading ? 0.82 : 1) *
+    (enemy.type === "cheer" ? 1 + cheerPulse : 1) *
+    (enemy.type === "leap" ? getLeapScale(enemy, beat) : 1);
+
+  return {
+    x,
+    y,
+    radius,
+    cheerLeading,
+  };
+}
+
+function getHealthBandColor(hpRatio) {
+  const t = clamp(hpRatio, 0, 1);
+  if (t >= 0.5) {
+    return mixHex(HEALTH_BAND_YELLOW, HEALTH_BAND_GREEN, (t - 0.5) * 2);
+  }
+
+  return mixHex(HEALTH_BAND_RED, HEALTH_BAND_YELLOW, t * 2);
+}
+
+function isGhostPhaseGraceActive(enemy, beat) {
+  return enemy.type === "ghost" &&
+    enemy.ghostCharges > 0 &&
+    Number.isFinite(beat) &&
+    Number.isFinite(enemy.ghostPhaseGraceUntilBeat) &&
+    beat < enemy.ghostPhaseGraceUntilBeat;
+}
+
 export class GameRenderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -78,6 +128,8 @@ export class GameRenderer {
     this.arena = { x: 0, width: 0 };
     this.frameIndex = 0;
     this.cueGradientCache = new Map();
+    this.healthBandStates = new Map();
+    this.lastRenderTimeMs = null;
   }
 
   resize() {
@@ -120,6 +172,12 @@ export class GameRenderer {
       return;
     }
 
+    const now = performance.now();
+    const dt = this.lastRenderTimeMs === null
+      ? 1 / 60
+      : clamp((now - this.lastRenderTimeMs) / 1000, 0, 0.05);
+    this.lastRenderTimeMs = now;
+
     this.frameIndex = (this.frameIndex + 1) % 120;
     this.ctx.clearRect(0, 0, this.width, this.height);
     this.drawArena(track, beat, {
@@ -131,6 +189,7 @@ export class GameRenderer {
     drawComboMeter(this, comboMultiplier, comboCap, beat);
     this.drawSpawnWarnings(spawnWarnings, beat);
     this.drawSpeedBoosts(speedBoosts, beat);
+    this.drawEnemyHealthBands(enemies, beat, dt);
     this.drawEffects(effects);
     this.drawActiveBeams(activeBeams, beat);
     this.drawEnemies(enemies, beat);
@@ -568,22 +627,7 @@ export class GameRenderer {
       const def = getEnemyDef(enemy.type);
       const aspect = getAspectDef(enemy.aspect);
       const grantAspect = getAspectForSource(enemy.aspectGrantor);
-      const laneWidth = this.arena.width / LANE_COUNT;
-      const x = this.laneCenter(enemy.lane) + (enemy.visualLaneOffset ?? 0) * laneWidth;
-      const visualY = enemy.visualY ?? enemy.y;
-      const y = this.yToScreen(visualY);
-      const baseRadius = enemy.type === "barrier" ? 25 : enemy.type === "leap" ? 23 : 21;
-      const cheerLeading = enemy.type === "cheer" && enemy.cheerLeading !== false;
-      const cheerChangeProgress = enemy.cheerStateTtl > 0
-        ? 1 - clamp(enemy.cheerStateTtl / Math.max(0.001, enemy.cheerStateDuration ?? 0.22), 0, 1)
-        : 1;
-      const cheerPulse = enemy.cheerStateTtl > 0
-        ? Math.sin(cheerChangeProgress * Math.PI) * 0.12
-        : 0;
-      const radius = baseRadius *
-        (enemy.type === "cheer" && !cheerLeading ? 0.82 : 1) *
-        (enemy.type === "cheer" ? 1 + cheerPulse : 1) *
-        (enemy.type === "leap" ? getLeapScale(enemy, beat) : 1);
+      const { x, y, radius, cheerLeading } = getEnemyRenderMetrics(this, enemy, beat);
       const baseFillColor = enemy.type === "basic" && aspect
         ? mixHex(def.color, aspect.color, 0.34)
         : def.color;
@@ -596,13 +640,20 @@ export class GameRenderer {
         : shapeBaseColor;
 
       const ghostIsPhasing = enemy.type === "ghost" && enemy.ghostCharges > 0;
-      const ghostAlpha = 0.5 + Math.sin((beat * 2.6 + enemy.id * 1.7) * Math.PI) * 0.2;
+      const ghostGraceActive = isGhostPhaseGraceActive(enemy, beat);
+      const ghostPulse = Math.sin((beat * 2.6 + enemy.id * 1.7) * Math.PI);
+      const ghostAlpha = ghostGraceActive
+        ? GHOST_GRACE_ALPHA_BASE + ghostPulse * GHOST_GRACE_ALPHA_PULSE
+        : 0.5 + ghostPulse * 0.2;
+      const renderFillColor = ghostGraceActive
+        ? mixHex(fillColor, "#05060b", GHOST_GRACE_DARKEN_AMOUNT)
+        : fillColor;
       ctx.globalAlpha = enemy.targetable === false
         ? 0.68
         : ghostIsPhasing
           ? ghostAlpha
           : 1;
-      this.drawEnemyShape(enemy, x, y, radius, fillColor, {
+      this.drawEnemyShape(enemy, x, y, radius, renderFillColor, {
         fill: enemy.type !== "ghost" || !ghostIsPhasing,
         stroke: enemy.type === "ghost",
       });
@@ -656,14 +707,6 @@ export class GameRenderer {
         ctx.fill();
         ctx.restore();
       }
-
-      const barWidth = 44;
-      const hpRatio = Math.max(0, enemy.hp / enemy.maxHp);
-      ctx.fillStyle = "#0b0d12";
-      ctx.fillRect(x - barWidth / 2, y + radius + 7, barWidth, 5);
-      ctx.fillStyle = hpRatio > 0.45 ? "#48d39b" : "#e65d5d";
-      ctx.fillRect(x - barWidth / 2, y + radius + 7, barWidth * hpRatio, 5);
-
     });
 
     enemies.forEach((enemy) => {
@@ -671,6 +714,74 @@ export class GameRenderer {
         this.drawLeapTargetIndicator(enemy, getEnemyDef(enemy.type), beat);
       }
     });
+  }
+
+  getRenderedHealthRatio(enemy, targetRatio, dt) {
+    let state = this.healthBandStates.get(enemy.id);
+    if (!state || targetRatio >= state.rendered) {
+      this.healthBandStates.set(enemy.id, {
+        rendered: targetRatio,
+        start: targetRatio,
+        target: targetRatio,
+        elapsed: 0,
+      });
+      return targetRatio;
+    }
+
+    if (Math.abs(targetRatio - state.target) > 0.003) {
+      state = {
+        rendered: state.rendered,
+        start: state.rendered,
+        target: targetRatio,
+        elapsed: 0,
+      };
+    }
+
+    const elapsed = Math.min(HEALTH_BAND_SHRINK_SECONDS, state.elapsed + Math.max(0, dt));
+    const progress = easeOutCubic(elapsed / HEALTH_BAND_SHRINK_SECONDS);
+    const rendered = state.start + (state.target - state.start) * progress;
+    this.healthBandStates.set(enemy.id, {
+      ...state,
+      rendered,
+      elapsed,
+    });
+    return rendered;
+  }
+
+  drawEnemyHealthBands(enemies, beat, dt) {
+    const liveIds = new Set(enemies.map((enemy) => enemy.id));
+    [...this.healthBandStates.keys()].forEach((enemyId) => {
+      if (!liveIds.has(enemyId)) {
+        this.healthBandStates.delete(enemyId);
+      }
+    });
+
+    enemies.forEach((enemy) => {
+      const metrics = getEnemyRenderMetrics(this, enemy, beat);
+      this.drawEnemyHealthBand(enemy, metrics, dt);
+    });
+  }
+
+  drawEnemyHealthBand(enemy, { y, radius }, dt) {
+    if (enemy.leap || enemy.hp <= 0 || enemy.maxHp <= 0) {
+      return;
+    }
+
+    const ctx = this.ctx;
+    const laneWidth = this.arena.width / LANE_COUNT;
+    const x = this.arena.x + enemy.lane * laneWidth;
+    const hpRatio = clamp(enemy.hp / enemy.maxHp, 0, 1);
+    const renderedHpRatio = this.getRenderedHealthRatio(enemy, hpRatio, dt);
+    const bandHeight = Math.max(2, radius * 2 * renderedHpRatio);
+    const bandColor = enemy.type === "ghost" && enemy.ghostCharges > 0
+      ? HEALTH_BAND_GHOST_PHASE
+      : getHealthBandColor(renderedHpRatio);
+
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = bandColor;
+    ctx.fillRect(x, y - bandHeight / 2, laneWidth, bandHeight);
+    ctx.restore();
   }
 
   drawEnemyShape(enemy, x, y, radius, color, { fill = true, stroke = false } = {}) {
@@ -805,6 +916,41 @@ export class GameRenderer {
         ctx.shadowBlur = 12;
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
+      if (effect.kind === "platingImpact") {
+        const progress = 1 - clamp(effect.ttl / effect.duration, 0, 1);
+        const eased = easeOutCubic(progress);
+        const alpha = 1 - progress;
+        const x = this.laneCenter(effect.lane);
+        const y = this.yToScreen(effect.y);
+        const radius = (effect.radius ?? 10) + eased * (effect.growth ?? 54);
+
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = effect.color ?? "#ffffff";
+        ctx.strokeStyle = effect.color ?? "#ffffff";
+        ctx.shadowColor = effect.color ?? "#ffffff";
+        ctx.shadowBlur = 22 * alpha;
+
+        ctx.globalAlpha = alpha * 0.14;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = alpha * 0.9;
+        ctx.lineWidth = 5 - progress * 2.5;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(2, radius * 0.42), 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
         return;
@@ -986,8 +1132,8 @@ export class GameRenderer {
       index: clamp(Math.floor(effect.sourceIndex ?? 0), 0, count - 1),
     });
     const progress = 1 - clamp(effect.ttl / Math.max(0.001, effect.duration ?? 0.38), 0, 1);
-    const headT = easeInQuart(progress);
-    const tailT = easeInQuart(clamp((progress - 0.2) / 0.8, 0, 1));
+    const headT = easeOutCubic(progress);
+    const tailT = easeOutCubic(clamp((progress - 0.16) / 0.84, 0, 1));
     const targetX = effect.targetOffscreen
       ? source.x + (source.x - (this.arena.x + this.arena.width / 2)) * 0.35
       : this.laneCenter(effect.targetLane ?? 1);
@@ -996,7 +1142,11 @@ export class GameRenderer {
       : this.yToScreen(effect.targetY ?? 0.45);
     const xDistance = Math.abs(targetX - source.x);
     const yDistance = Math.abs(targetY - source.y);
-    const controlX = (source.x + targetX) / 2 + clamp((targetX - source.x) * 0.08, -30, 30);
+    const arcLean = effect.arcLean === -1 ? -1 : 1;
+    const arcBend = Number.isFinite(effect.arcBend) ? effect.arcBend : 42;
+    const controlX = (source.x + targetX) / 2 +
+      clamp((targetX - source.x) * 0.08, -30, 30) +
+      arcLean * arcBend;
     const controlLift = effect.targetOffscreen
       ? 80
       : clamp(yDistance * 0.18 + xDistance * 0.05, 24, 84);
@@ -1010,7 +1160,7 @@ export class GameRenderer {
     };
     const head = pointAt(headT);
     const color = effect.color ?? PLATING_COLOR;
-    const alpha = 0.36 + Math.sin(progress * Math.PI) * 0.5;
+    const alpha = 0.52 + Math.sin(progress * Math.PI) * 0.48;
     const ctx = this.ctx;
 
     ctx.save();
@@ -1018,9 +1168,9 @@ export class GameRenderer {
     ctx.strokeStyle = color;
     ctx.fillStyle = "#ffffff";
     ctx.shadowColor = color;
-    ctx.shadowBlur = 14;
-    ctx.globalAlpha = alpha * 0.64;
-    ctx.lineWidth = 2.4;
+    ctx.shadowBlur = 22;
+    ctx.globalAlpha = alpha * 0.76;
+    ctx.lineWidth = 5.2;
     ctx.beginPath();
     const steps = 8;
     for (let step = 0; step <= steps; step += 1) {
@@ -1034,10 +1184,23 @@ export class GameRenderer {
     }
     ctx.stroke();
 
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.strokeStyle = "#ffffff";
+    ctx.shadowBlur = 8;
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
     ctx.globalAlpha = alpha;
     ctx.beginPath();
-    ctx.arc(head.x, head.y, 4.2, 0, Math.PI * 2);
+    ctx.arc(head.x, head.y, 6.4, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.globalAlpha = alpha * 0.72;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 10, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 

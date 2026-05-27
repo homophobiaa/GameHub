@@ -15,15 +15,19 @@ export const MAX_TRACK_MARGIN_LEVEL = 2;
 export const MIN_ENEMY_Y = 0.05;
 export const ENEMY_BREACH_Y = 1;
 export const PROJECTILE_END_Y = 0;
+export const KNOCKBACK_RECOVERY_SECONDS = 0.8;
 
 export const LEAP_AIR_BEATS = 2;
 export const LEAP_SHORT_TARGET_Y = 0.5;
 export const LEAP_SHORT_AIR_BEAT_DISCOUNT = 0.5;
 export const LEAP_FIELD_COOLDOWN_SECONDS = 3;
-export const LEAP_MIN_TARGET_Y = 0.2;
+export const LEAP_MIN_TARGET_Y = 0.25;
+export const LEAP_SPAWN_PROGRESS_OFFSET = 0.25;
 export const LEAP_FALLBACK_TARGET_Y = 0.5;
 export const LEAP_LANDING_OFFSET = 0.07;
 export const LEAP_MAX_LANDING_Y = 0.8;
+
+export const GHOST_PHASE_GRACE_BEATS = 1;
 
 export const BARRIER_SPAWN_MAX_LANE_Y = 0.6;
 
