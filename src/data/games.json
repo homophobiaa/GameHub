@@ -85,15 +85,15 @@
   },
   {
     "id": "slav",
-    "name": "Slav's Game",
+    "name": "Trigger Finger",
     "creator": "Slav",
     "creatorGithub": "Slavender-marmu",
-    "description": "An original student-made game crafted for the SoftUni showcase.",
-    "screenshot": "",
-    "status": "In development",
-    "tags": ["Student Project", "Game"],
+    "description": "A lane-based rhythm shooter where you build and rearrange a looping bullet timeline, then time shots across three lanes to survive escalating enemy waves.",
+    "screenshot": "/games/Slav-TriggerFinger/slav.png",
+    "status": "Playable",
+    "tags": ["Reaction", "Game"],
     "branch": "Slav",
-    "playUrl": "#"
+    "playUrl": "/games/Slav-TriggerFinger/index.html"
   },
   {
     "id": "damyan",
