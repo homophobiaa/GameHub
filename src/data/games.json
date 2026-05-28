@@ -1,15 +1,15 @@
 [
   {
     "id": "deyan",
-    "name": "Deyan's Game",
+    "name": "Hanoi Royale",
     "creator": "Deyan",
     "creatorGithub": "homophobiaa",
-    "description": "A signature project by the GameHub maintainer. Details revealed at the SoftUni event.",
-    "screenshot": "",
-    "status": "In development",
-    "tags": ["Student Project", "Game"],
+    "description": "A chaotic speed-based twist on the classic Tower of Hanoi where players race against time and each other to solve increasingly difficult puzzles with competitive mechanics and arcade-style pressure.",
+    "screenshot": "/games/Deyan-HanoiRoyale/deyan.png",
+    "status": "Playable",
+    "tags": ["Hanoi", "Game"],
     "branch": "Deyan",
-    "playUrl": "#"
+    "playUrl": "https://hanoi-royale.gamehubbg.com"
   },
   {
     "id": "radoslav",
