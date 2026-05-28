@@ -13,15 +13,15 @@
   },
   {
     "id": "radoslav",
-    "name": "Radoslav's Game",
+    "name": "Time Strike",
     "creator": "Radoslav",
     "creatorGithub": "RadoslavMitov8",
-    "description": "An original student-made game crafted for the SoftUni showcase.",
-    "screenshot": "",
-    "status": "In development",
-    "tags": ["Student Project", "Game"],
+    "description": "ChronoStrike is a fast-paced neon reflex arcade game where players must stop a precision timer as close as possible to a randomly generated target second to achieve the highest score.",
+    "screenshot": "/games/Radoslav-TimeStrike/radoslav.png",
+    "status": "Playable",
+    "tags": ["Time Based", "Game"],
     "branch": "Radoslav",
-    "playUrl": "#"
+    "playUrl": "https://time-strike.gamehubbg.com"
   },
   {
     "id": "ivailo",
