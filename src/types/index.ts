@@ -76,4 +76,5 @@ export type ScreenId =
   | "game"
   | "result"
   | "leaderboard"
+  | "profiles"
   | "scoring";
