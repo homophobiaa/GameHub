@@ -1,20 +1,206 @@
-<!doctype html>
-<html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="SoftUni GameHub — a showcase of student-made games built for the SoftUni event." />
-    <title>SoftUni GameHub — Student Games Showcase</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Word Scramble</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- SCREEN: Welcome -->
+  <div id="screen-welcome" class="screen active">
+    <div class="orbs">
+      <div class="orb orb1"></div>
+      <div class="orb orb2"></div>
+      <div class="orb orb3"></div>
+    </div>
+    <div class="welcome-wrap">
+      <div class="logo-block">
+        <div class="logo-icon">🔤</div>
+        <h1>Word Scramble</h1>
+        <p class="tagline">Наредете буквите и познайте думата!</p>
+      </div>
+
+      <!-- DIFFICULTY -->
+      <div class="section-label">Трудност</div>
+      <div class="diff-row">
+        <button class="diff-btn active" data-diff="easy" onclick="setDiff(this)">
+          <span class="diff-icon">🟢</span>
+          <span class="diff-name">Easy</span>
+          <span class="diff-desc">до 6 букви · 60 сек</span>
+        </button>
+        <button class="diff-btn" data-diff="medium" onclick="setDiff(this)">
+          <span class="diff-icon">🟡</span>
+          <span class="diff-name">Medium</span>
+          <span class="diff-desc">до 8 букви · 45 сек</span>
+        </button>
+        <button class="diff-btn" data-diff="hard" onclick="setDiff(this)">
+          <span class="diff-icon">🔴</span>
+          <span class="diff-name">Hard</span>
+          <span class="diff-desc">до 12 букви · 30 сек</span>
+        </button>
+      </div>
+
+      <!-- CATEGORY FILTER -->
+      <div class="section-label">Категории <span class="sel-count" id="sel-count">(всички)</span></div>
+      <div class="cat-filter" id="cat-filter">
+        <button class="cat-btn active" data-cat="all"         onclick="toggleCat(this)">🌐 Всички</button>
+        <button class="cat-btn"        data-cat="🎬 Филми"    onclick="toggleCat(this)">🎬 Филми</button>
+        <button class="cat-btn"        data-cat="🎮 Игри"     onclick="toggleCat(this)">🎮 Игри</button>
+        <button class="cat-btn"        data-cat="🏢 Компании" onclick="toggleCat(this)">🏢 Компании</button>
+        <button class="cat-btn"        data-cat="🌍 Държави"  onclick="toggleCat(this)">🌍 Държави</button>
+        <button class="cat-btn"        data-cat="🎵 Музика"   onclick="toggleCat(this)">🎵 Музика</button>
+        <button class="cat-btn"        data-cat="⚽ Спорт"    onclick="toggleCat(this)">⚽ Спорт</button>
+        <button class="cat-btn"        data-cat="🔬 Наука"    onclick="toggleCat(this)">🔬 Наука</button>
+        <button class="cat-btn"        data-cat="🍕 Храна"    onclick="toggleCat(this)">🍕 Храна</button>
+      </div>
+
+      <div class="form-card">
+        <label class="field-label">Твоят прякор</label>
+        <input id="initials-input" type="text" placeholder="напр. Пешо или АБ" maxlength="12" autocomplete="off" />
+        <button id="btn-start" onclick="startGame()">
+          <span>Играй сега</span>
+          <span class="btn-arr">→</span>
+        </button>
+        <button class="btn-ghost" onclick="showLeaderboard()">🏆 Класация</button>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-item"><span class="stat-num" id="stat-time">60</span><span class="stat-lbl">сек</span></div>
+        <div class="stat-div"></div>
+        <div class="stat-item"><span class="stat-num">10</span><span class="stat-lbl">думи</span></div>
+        <div class="stat-div"></div>
+        <div class="stat-item"><span class="stat-num">80+</span><span class="stat-lbl">въпроса</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN: Game -->
+  <div id="screen-game" class="screen">
+    <div class="game-layout">
+
+      <header class="game-top">
+        <div class="player-chip" id="player-tag">ПЛ</div>
+        <div class="progress-wrap">
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <span class="progress-txt" id="progress-txt">1 / 10</span>
+        </div>
+        <div class="score-chip">
+          <span class="star">★</span>
+          <span id="score-value">0</span>
+        </div>
+      </header>
+
+      <div class="timer-row">
+        <div class="timer-track">
+          <div class="timer-fill" id="timer-fill"></div>
+        </div>
+        <span class="timer-num" id="timer-text">60</span>
+      </div>
+
+      <div class="puzzle-zone">
+        <div class="top-badges">
+          <div class="cat-chip" id="cat-badge">Категория</div>
+          <div class="diff-chip" id="diff-chip">🟢 Easy</div>
+          <button class="hint-btn" id="hint-btn" onclick="useHint()">💡 Hint</button>
+        </div>
+
+        <!-- Scrambled letters display -->
+        <div class="scramble-display" id="scramble-display"></div>
+
+        <!-- Hint text -->
+        <p class="puzzle-hint" id="puzzle-hint"></p>
+
+        <!-- Answer slots (blanks to fill) -->
+        <div class="answer-slots" id="answer-slots"></div>
+      </div>
+
+      <!-- Letter buttons to tap -->
+      <div class="letter-buttons" id="letter-buttons"></div>
+
+      <div class="game-foot">
+        <div class="foot-actions">
+          <button class="action-btn" onclick="clearAnswer()" title="Изчисти">⌫ Изчисти</button>
+          <button class="action-btn primary" onclick="submitAnswer()" title="Провери">✓ Провери</button>
+          <button class="action-btn" onclick="skipWord()" title="Пропусни">⏭ Пропусни</button>
+        </div>
+        <div class="feedback-msg" id="feedback-bar"></div>
+        <div class="streak-row">
+          <span>🔥 Серия:</span>
+          <strong id="streak-count">0</strong>
+        </div>
+      </div>
+
+    </div>
+    <div class="combo-overlay" id="combo-overlay"></div>
+  </div>
+
+  <!-- SCREEN: Game Over -->
+  <div id="screen-gameover" class="screen">
+    <div class="orbs"><div class="orb orb1"></div><div class="orb orb2"></div></div>
+    <div class="gameover-wrap">
+      <div class="result-icon" id="gameover-emoji">🏆</div>
+      <h2 id="gameover-title">Браво!</h2>
+      <p class="go-sub" id="gameover-msg"></p>
+      <div class="score-showcase">
+        <span class="score-big" id="final-score">0</span>
+        <span class="score-unit">точки</span>
+      </div>
+      <div class="go-stats" id="go-stats"></div>
+      <button class="btn-main" onclick="playAgain()">🔄 Играй отново</button>
+      <button class="btn-ghost" onclick="showLeaderboard()">🏆 Класация</button>
+    </div>
+  </div>
+
+  <!-- SCREEN: Leaderboard -->
+  <div id="screen-leaderboard" class="screen">
+    <div class="lb-wrap">
+      <div class="lb-header">
+        <div class="logo-icon small">🏆</div>
+        <h2>Топ 10 Играчи</h2>
+      </div>
+      <div class="lb-tabs">
+        <button class="lb-tab active" onclick="switchLbTab(this,'easy')">🟢 Easy</button>
+        <button class="lb-tab"        onclick="switchLbTab(this,'medium')">🟡 Medium</button>
+        <button class="lb-tab"        onclick="switchLbTab(this,'hard')">🔴 Hard</button>
+      </div>
+      <div class="lb-list" id="lb-list"></div>
+      <button class="btn-ghost full-w mt1" onclick="showWelcome()">← Назад</button>
+    </div>
+  </div>
+
+  <!-- AUDIO -->
+  <script>
+  const SFX = (() => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function tone(freq, type, dur, vol=0.15) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = type; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      o.start(); o.stop(ctx.currentTime + dur);
+    }
+    return {
+      resume() { if (ctx.state === 'suspended') ctx.resume(); },
+      tap()     { tone(600, 'sine', 0.06, 0.1); },
+      correct() { tone(520,'sine',.1); setTimeout(()=>tone(780,'sine',.15),80); },
+      wrong()   { tone(200,'sawtooth',.2,.1); },
+      submit()  { tone(440,'sine',.08,.12); },
+      combo()   { [440,550,660,880].forEach((f,i)=>setTimeout(()=>tone(f,'sine',.12,.2),i*60)); },
+      tick()    { tone(880,'square',.04,.05); },
+      hint()    { tone(350,'sine',.12,.1); setTimeout(()=>tone(500,'sine',.1),100); },
+      skip()    { tone(300,'triangle',.15,.08); },
+    };
+  })();
+  </script>
+
+  <script src="words.js"></script>
+  <script src="game.js"></script>
+</body>
 </html>
