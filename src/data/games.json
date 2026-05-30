@@ -61,15 +61,15 @@
   },
   {
     "id": "dimitar",
-    "name": "Dimitar's Game",
+    "name": "Autobahn Rush",
     "creator": "Dimitar",
     "creatorGithub": "Dimitar-Iliev-ops",
-    "description": "An original student-made game crafted for the SoftUni showcase.",
-    "screenshot": "",
-    "status": "In development",
+    "description": "Autobahn Rush is a browser-based 3D highway driving prototype built with Vite, Three.js, plain HTML, CSS, and modular JavaScript.",
+    "screenshot": "/games/Dimitar-AutoBahnRush/dimitar.png",
+    "status": "Playable",
     "tags": ["Student Project", "Game"],
     "branch": "Dimitar",
-    "playUrl": "#"
+    "playUrl": "https://autobahnrush.gamehubbg.com"
   },
   {
     "id": "lubo",
