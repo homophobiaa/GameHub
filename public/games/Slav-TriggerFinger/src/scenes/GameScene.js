@@ -34,7 +34,7 @@ import {
   updateDamageOverTime,
   updateElapseBeamDamage,
 } from "../systems/combat.js";
-import { WaveRunner } from "../systems/waveRunner.js";
+import { createEnemy, WaveRunner } from "../systems/waveRunner.js";
 import { applyUpgradeChoice, createStoreOffer } from "../systems/upgrades.js";
 import { createWoeChoices, shouldOfferWoe } from "../systems/woeDraft.js";
 import { getDamageMultiplier, rateTiming } from "../systems/timing.js";
@@ -53,17 +53,22 @@ import {
   ASPECT_SPREAD_TARGET_COUNT,
   ENEMY_BREACH_Y,
   GOOD_WINDOW_BEATS,
+  LANE_COUNT,
   PROJECTILE_END_Y,
   SHOCKWAVE_MIN_Y,
   STARTING_PLATING,
   TRACK_WAVE_START_LEAD_BEATS,
 } from "../config/gameplay.js";
 import { GameRenderer } from "../render/GameRenderer.js";
+import { getComboMeterRects } from "../render/comboMeterRenderer.js";
 import { BeatBarView, markerOffsetPercent } from "../ui/beatBarView.js";
 import { appendCombatEvents } from "../ui/combatEventView.js";
 import { IntermissionView } from "../ui/intermissionView.js";
 import { playShockwaveScreenEffect } from "../ui/screenEffects.js";
+import { clearTutorialOverlay, renderReadyCheckTutorialOverlay } from "../ui/tutorialOverlayView.js";
 import { updateWaveProgressView } from "../ui/waveProgressView.js";
+import { getStoredPlayerTag, normalizePlayerTag, recordLeaderboardScore } from "../systems/leaderboard.js";
+import { createGameplayTutorialController } from "../systems/gameplayTutorial.js";
 import { EPSILON, isOnBeat, nextHalfBeatAfter } from "../utils/beatMath.js";
 import { clamp } from "../utils/math.js";
 import { MenuScene } from "./MenuScene.js";
@@ -92,10 +97,13 @@ const PLATING_FINISH_CLEAR_DELAY_SECONDS = 0.45;
 const PLATING_FINISH_OUTRO_EXTRA_SECONDS = 0.35;
 const PLATING_FINISH_COLOR = "#d9e2ef";
 const PLATING_FINISH_SPECIAL_GRACE_SECONDS = 1.0;
+const FIRST_WAVE_TUTORIAL_KILL_TARGET = 3;
+const FIRST_WAVE_TUTORIAL_COMPLETE_DELAY_SECONDS = 1.0;
+const FIRST_WAVE_TUTORIAL_ENEMY_Y = 0.32;
+const FIRST_WAVE_TUTORIAL_SPAWN_WARNING_SECONDS = 0.75;
 const PLATING_IMPACT_SECONDS = 0.32;
 const PLATING_IMPACT_RADIUS = 10;
 const PLATING_IMPACT_GROWTH = 54;
-
 export class GameScene {
   constructor({ manager, props = {} }) {
     this.manager = manager;
@@ -121,6 +129,12 @@ export class GameScene {
     this.runSeconds = 0;
     this.beatSeconds = 1;
     this.score = 0;
+    this.playerTag = normalizePlayerTag(props.playerTag ?? getStoredPlayerTag());
+    this.scoreSaveResult = null;
+    this.tutorial = createGameplayTutorialController({
+      enabled: Boolean(props.tutorialMode),
+      tag: this.playerTag,
+    });
     this.combo = 0;
     this.comboCap = 1.5;
     this.maxPlating = STARTING_PLATING;
@@ -175,6 +189,17 @@ export class GameScene {
     this.lastScrappedChipUids = [];
     this.activeElapse = null;
     this.pointerLane = null;
+    this.tutorialEnemyId = null;
+    this.gameplayInputDisabled = false;
+    this.tutorialBeatPauseTarget = null;
+    this.tutorialBeatPauseActive = false;
+    this.tutorialBeatPauseConsumed = false;
+    this.tutorialTimelinePaused = false;
+    this.tutorialAllowedLanes = null;
+    this.tutorialChallengeKills = 0;
+    this.tutorialChallengeActive = false;
+    this.tutorialChallengeCompleteTimer = null;
+    this.tutorialSpawnQueue = [];
   }
 
   mount(root) {
@@ -244,13 +269,49 @@ export class GameScene {
     event.preventDefault();
   };
 
+  handleTutorialClick(event) {
+    const layer = event.target.closest("[data-game-tutorial-layer]");
+    if (!layer) {
+      return false;
+    }
+
+    if (
+      this.intermission &&
+      this.tutorial.isReadyCheckBlocking()
+    ) {
+      event.preventDefault();
+      this.tutorial.advanceReadyCheckStep();
+      this.syncTutorialOverlay();
+      return true;
+    }
+
+    if (!this.intermission && this.tutorial.isGameplayBlocking()) {
+      event.preventDefault();
+      const step = this.tutorial.advanceGameplayStep();
+      if (step?.id === "enemy-intro") {
+        this.beginFirstWaveTutorialTimeline();
+      } else if (step?.id === "beat-tracker-combo") {
+        this.continueFirstWaveTutorialTimeline();
+      }
+      this.syncTutorialOverlay();
+      return true;
+    }
+
+    return false;
+  }
+
   resize = () => {
     this.renderer?.resize();
+    this.syncTutorialOverlay();
   };
 
   onClick = (event) => {
     const debugAction = event.target.closest("[data-debug-action]")?.dataset.debugAction;
     if (debugAction && this.handleDebugAction(debugAction, event)) {
+      return;
+    }
+
+    if (this.handleTutorialClick(event)) {
       return;
     }
 
@@ -264,6 +325,7 @@ export class GameScene {
     }
 
     if (action === "menu") {
+      this.persistRunScore();
       this.manager.load(MenuScene);
     }
 
@@ -1654,6 +1716,10 @@ export class GameScene {
       return;
     }
 
+    if (!this.canUseGameplayInputLane(lane)) {
+      return;
+    }
+
     this.pointerLane = lane;
     this.fireLane(lane);
   };
@@ -1704,6 +1770,14 @@ export class GameScene {
     return false;
   }
 
+  canUseGameplayInputLane(lane) {
+    if (this.gameplayInputDisabled) {
+      return false;
+    }
+
+    return !this.tutorialAllowedLanes || this.tutorialAllowedLanes.has(lane);
+  }
+
   startWave() {
     if (this.pendingWoe) {
       this.editorMessage = "Choose a Woe first.";
@@ -1729,8 +1803,10 @@ export class GameScene {
       return;
     }
 
+    this.tutorial.completeReadyCheck();
+    clearTutorialOverlay(this.el);
     this.intermissionView.hide();
-    this.active = true;
+    this.active = false;
     this.intermission = false;
     this.pendingUpgrade = false;
     this.choices = [];
@@ -1755,16 +1831,253 @@ export class GameScene {
     this.waveProgressFlashTtl = 0;
     this.beatBarWinddownTtl = 0;
     this.suppressBeatBullets = false;
+    this.gameplayInputDisabled = false;
+    this.tutorialBeatPauseTarget = null;
+    this.tutorialBeatPauseActive = false;
+    this.tutorialBeatPauseConsumed = false;
+    this.tutorialTimelinePaused = false;
+    this.tutorialAllowedLanes = null;
+    this.tutorialChallengeKills = 0;
+    this.tutorialChallengeActive = false;
+    this.tutorialChallengeCompleteTimer = null;
+    this.tutorialSpawnQueue = [];
     this.progressEl?.classList.remove("is-complete-flash");
     this.beatStrip?.classList.remove("is-winding-down");
     this.resetWaveResources();
+    if (this.tutorial.shouldStartFirstWaveIntro(this.waveIndex)) {
+      this.startFirstWaveTutorialIntro();
+      return;
+    }
+
+    this.beginWaveTimeline();
+    this.startWaveRunner();
+  }
+
+  beginWaveTimeline() {
+    this.active = true;
+    this.suppressBeatBullets = false;
     this.prepareTrackForWaveStart();
+  }
+
+  startWaveRunner() {
+    this.tutorial.onWaveStart({
+      scene: this,
+      waveIndex: this.waveIndex,
+      beat: this.beat,
+    });
     this.waveRunner.start(this.waveIndex, this.beat, {
       enemyPool: this.enemyPool,
       healthMultiplier: this.enemyHealthMultiplier(),
       aspectGrantors: this.aspectGrantors,
       platingReserve: this.plating,
     });
+  }
+
+  startFirstWaveTutorialIntro() {
+    this.tutorial.startFirstWaveIntro();
+    this.gameplayInputDisabled = true;
+    this.tutorialAllowedLanes = null;
+    this.tutorialTimelinePaused = false;
+    this.suppressBeatBullets = true;
+    const enemy = this.spawnTutorialEnemy(1);
+    this.tutorialEnemyId = enemy?.id ?? null;
+    this.syncTutorialOverlay();
+  }
+
+  beginFirstWaveTutorialTimeline() {
+    this.beginWaveTimeline();
+    this.gameplayInputDisabled = true;
+    this.tutorialBeatPauseTarget = this.track.targetBeat;
+    this.tutorialBeatPauseActive = false;
+    this.tutorialTimelinePaused = false;
+  }
+
+  continueFirstWaveTutorialTimeline() {
+    this.tutorialBeatPauseActive = false;
+    this.tutorialBeatPauseTarget = null;
+    this.tutorialBeatPauseConsumed = true;
+    this.active = true;
+    this.gameplayInputDisabled = false;
+    this.tutorialAllowedLanes = new Set([1]);
+    this.tutorialTimelinePaused = true;
+    this.track.syncTarget(this.beat);
+  }
+
+  spawnTutorialEnemy(lane, { y = FIRST_WAVE_TUTORIAL_ENEMY_Y, challengeTarget = false } = {}) {
+    const enemy = createEnemy("basic", lane, {
+      currentBeat: this.beat,
+      healthMultiplier: this.enemyHealthMultiplier(),
+    });
+    enemy.y = y;
+    enemy.visualY = y;
+    enemy.movementDisabled = true;
+    enemy.tutorialDummy = true;
+    enemy.tutorialChallengeTarget = Boolean(challengeTarget);
+    this.spawnEnemy(enemy);
+    return enemy;
+  }
+
+  scheduleTutorialEnemySpawn(
+    lane,
+    {
+      y = FIRST_WAVE_TUTORIAL_ENEMY_Y,
+      challengeTarget = true,
+      warningSeconds = FIRST_WAVE_TUTORIAL_SPAWN_WARNING_SECONDS,
+    } = {},
+  ) {
+    this.tutorialSpawnQueue.push({
+      lane,
+      y,
+      challengeTarget,
+      warningSeconds,
+      secondsRemaining: warningSeconds,
+      color: getEnemyDef("basic").color,
+    });
+  }
+
+  updateTutorialSpawnQueue(dt) {
+    if (this.tutorialSpawnQueue.length === 0) {
+      return;
+    }
+
+    const ready = [];
+    this.tutorialSpawnQueue = this.tutorialSpawnQueue
+      .map((spawn) => ({ ...spawn, secondsRemaining: spawn.secondsRemaining - dt }))
+      .filter((spawn) => {
+        if (spawn.secondsRemaining <= 0) {
+          ready.push(spawn);
+          return false;
+        }
+
+        return true;
+      });
+
+    ready.forEach((spawn) => {
+      const enemy = this.spawnTutorialEnemy(spawn.lane, {
+        y: spawn.y,
+        challengeTarget: spawn.challengeTarget,
+      });
+      if (enemy) {
+        enemy.visualY = -0.14;
+      }
+    });
+  }
+
+  getTutorialSpawnWarnings() {
+    return this.tutorialSpawnQueue.map((spawn) => {
+      const duration = Math.max(0.001, spawn.warningSeconds);
+      const ratio = clamp(spawn.secondsRemaining / duration, 0, 1);
+      return {
+        lane: spawn.lane,
+        color: spawn.color,
+        timeUntil: spawn.secondsRemaining / Math.max(0.001, this.beatSeconds),
+        strength: 1 - ratio,
+      };
+    });
+  }
+
+  startFirstWaveCleanShotChallenge() {
+    if (this.tutorial.getGameplayStep()?.id !== "middle-lane-shot") {
+      return;
+    }
+
+    this.tutorial.advanceGameplayStep({ force: true });
+    this.tutorialTimelinePaused = false;
+    this.gameplayInputDisabled = false;
+    this.tutorialAllowedLanes = null;
+    this.tutorialChallengeKills = 0;
+    this.tutorialChallengeActive = true;
+    this.tutorialChallengeCompleteTimer = null;
+    this.enemies.forEach((enemy) => {
+      if (enemy.tutorialDummy && enemy.hp > 0) {
+        enemy.tutorialChallengeTarget = true;
+      }
+    });
+    [0, 2].forEach((lane) => this.scheduleTutorialEnemySpawn(lane));
+    this.syncTutorialOverlay();
+  }
+
+  resetFirstWaveChallengeCounter() {
+    if (!this.tutorialChallengeActive || this.tutorialChallengeKills === 0) {
+      return;
+    }
+
+    this.tutorialChallengeKills = 0;
+    this.syncTutorialOverlay();
+  }
+
+  handleTutorialEnemyKilled(enemy) {
+    if (
+      !this.tutorialChallengeActive ||
+      !enemy.tutorialChallengeTarget ||
+      this.tutorial.getGameplayStep()?.id !== "clean-shot-challenge"
+    ) {
+      return;
+    }
+
+    this.tutorialChallengeKills += 1;
+    if (this.tutorialChallengeKills >= FIRST_WAVE_TUTORIAL_KILL_TARGET) {
+      this.finishFirstWaveTutorialChallenge();
+      return;
+    }
+
+    this.scheduleTutorialEnemySpawn(enemy.lane);
+    this.syncTutorialOverlay();
+  }
+
+  finishFirstWaveTutorialChallenge() {
+    this.tutorialChallengeActive = false;
+    this.gameplayInputDisabled = true;
+    this.tutorialAllowedLanes = null;
+    this.active = true;
+    this.tutorial.advanceGameplayStep({ force: true });
+    this.tutorialChallengeCompleteTimer = FIRST_WAVE_TUTORIAL_COMPLETE_DELAY_SECONDS;
+    this.syncTutorialOverlay();
+  }
+
+  updateFirstWaveTutorialCompletion(dt) {
+    if (!Number.isFinite(this.tutorialChallengeCompleteTimer)) {
+      return;
+    }
+
+    this.tutorialChallengeCompleteTimer = Math.max(0, this.tutorialChallengeCompleteTimer - dt);
+    if (this.tutorialChallengeCompleteTimer > 0) {
+      return;
+    }
+
+    this.tutorialChallengeCompleteTimer = null;
+    this.completeFirstWaveTutorial();
+  }
+
+  completeFirstWaveTutorial() {
+    this.enemies.forEach((enemy) => {
+      if (enemy.tutorialDummy && enemy.hp > 0) {
+        this.addEnemyDeathPuff(enemy);
+      }
+    });
+    this.enemies = this.enemies.filter((enemy) => !enemy.tutorialDummy);
+    this.frameEnemyIndex = null;
+    this.activeElapse = null;
+    this.pendingChipShots = [];
+    this.pendingPiercingImpacts = [];
+    this.pendingAspectSpreads = [];
+    this.resetPlatingFinisher();
+    this.score = 0;
+    this.waveKills = 0;
+    this.visualWaveProgress = 0;
+    this.gameplayInputDisabled = false;
+    this.tutorialAllowedLanes = null;
+    this.tutorialTimelinePaused = false;
+    this.tutorialChallengeKills = 0;
+    this.tutorialChallengeActive = false;
+    this.tutorialEnemyId = null;
+    this.tutorialSpawnQueue = [];
+    clearTutorialOverlay(this.el);
+    this.resetWaveResources();
+    this.active = true;
+    this.suppressBeatBullets = false;
+    this.track.syncTarget(this.beat);
+    this.startWaveRunner();
   }
 
   resetWaveResources() {
@@ -1822,7 +2135,151 @@ export class GameScene {
           }
         : null,
       message: this.editorMessage,
+      tutorial: this.tutorial.getContext(),
     });
+    this.syncTutorialOverlay();
+  }
+
+  syncTutorialOverlay() {
+    clearTutorialOverlay(this.el);
+    const isReadyCheck =
+      this.intermission &&
+      (this.waveIndex === 0 && !this.pendingUpgrade && !this.pendingWoe && !this.storeOffer);
+    let step = isReadyCheck ? this.tutorial.getReadyCheckStep() : null;
+    let container = this.overlay;
+    if (!step && !this.intermission) {
+      step = this.getGameplayTutorialOverlayStep();
+      container = this.el;
+    }
+    if (!step) {
+      return;
+    }
+
+    const render = () => renderReadyCheckTutorialOverlay({
+      container,
+      layerContainer: this.el,
+      step,
+    });
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(render);
+    } else {
+      render();
+    }
+  }
+
+  getGameplayTutorialOverlayStep() {
+    const step = this.tutorial.getGameplayStep();
+    if (!step) {
+      return null;
+    }
+
+    if (step.waitFor === "firstBulletConverge" && !this.tutorialBeatPauseActive) {
+      return null;
+    }
+
+    if (Array.isArray(step.callouts)) {
+      const callouts = step.callouts
+        .map((callout) => this.resolveGameplayTutorialCallout(callout))
+        .filter(Boolean);
+      return callouts.length > 0 ? { ...step, callouts } : null;
+    }
+
+    return this.resolveGameplayTutorialCallout(step);
+  }
+
+  resolveGameplayTutorialCallout(step) {
+    if (step.target === "scriptedEnemy") {
+      const targetRect = this.getTutorialEnemyTargetRect();
+      return targetRect ? { ...step, targetRect } : null;
+    }
+
+    if (step.target === "comboBars") {
+      const targetRects = this.getComboMeterTargetRects();
+      if (targetRects.length === 0) {
+        return null;
+      }
+
+      return {
+        ...step,
+        targetRects,
+        anchorRect: targetRects[0],
+      };
+    }
+
+    if (step.target === "playArea") {
+      const targetRect = this.getPlayAreaTargetRect();
+      if (!targetRect) {
+        return null;
+      }
+
+      const resolved = { ...step, targetRect };
+      if (step.id === "clean-shot-challenge") {
+        resolved.counter = {
+          current: this.tutorialChallengeKills,
+          total: FIRST_WAVE_TUTORIAL_KILL_TARGET,
+        };
+      }
+      return resolved;
+    }
+
+    return step;
+  }
+
+  canvasLocalRectToViewport(rect) {
+    const canvasRect = this.canvas.getBoundingClientRect();
+    return {
+      left: canvasRect.left + rect.left,
+      top: canvasRect.top + rect.top,
+      right: canvasRect.left + rect.right,
+      bottom: canvasRect.top + rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    };
+  }
+
+  getComboMeterTargetRects() {
+    if (!this.canvas || !this.renderer) {
+      return [];
+    }
+
+    return getComboMeterRects(this.renderer, this.comboCap)
+      .map((rect) => this.canvasLocalRectToViewport(rect));
+  }
+
+  getPlayAreaTargetRect() {
+    if (!this.canvas || !this.renderer) {
+      return null;
+    }
+
+    return this.canvasLocalRectToViewport({
+      left: this.renderer.arena.x,
+      top: 0,
+      right: this.renderer.arena.x + this.renderer.arena.width,
+      bottom: this.renderer.yToScreen(ENEMY_BREACH_Y),
+      width: this.renderer.arena.width,
+      height: this.renderer.yToScreen(ENEMY_BREACH_Y),
+    });
+  }
+
+  getTutorialEnemyTargetRect() {
+    const enemy = this.enemies.find((candidate) => candidate.id === this.tutorialEnemyId);
+    if (!enemy || !this.canvas || !this.renderer) {
+      return null;
+    }
+
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const laneWidth = this.renderer.arena.width / LANE_COUNT;
+    const x = this.renderer.laneCenter(enemy.lane) + (enemy.visualLaneOffset ?? 0) * laneWidth;
+    const y = this.renderer.yToScreen(enemy.visualY ?? enemy.y);
+    const radius = 34;
+    return {
+      left: canvasRect.left + x - radius,
+      top: canvasRect.top + y - radius,
+      right: canvasRect.left + x + radius,
+      bottom: canvasRect.top + y + radius,
+      width: radius * 2,
+      height: radius * 2,
+    };
   }
 
   placeSelectedAt(beat) {
@@ -1835,11 +2292,34 @@ export class GameScene {
     this.showIntermission();
   }
 
+  maybePauseFirstWaveTutorialTimeline() {
+    const step = this.tutorial.getGameplayStep();
+    if (
+      step?.waitFor !== "firstBulletConverge" ||
+      this.tutorialBeatPauseActive ||
+      this.tutorialBeatPauseConsumed ||
+      !Number.isFinite(this.tutorialBeatPauseTarget) ||
+      this.beat < this.tutorialBeatPauseTarget - EPSILON
+    ) {
+      return false;
+    }
+
+    this.beat = this.tutorialBeatPauseTarget;
+    this.track.syncTarget(this.beat);
+    this.active = false;
+    this.tutorialBeatPauseActive = true;
+    this.syncTutorialOverlay();
+    return true;
+  }
+
   update(dt) {
     if (this.active) {
       this.runSeconds += dt;
-      this.beat += dt / this.beatSeconds;
+      if (!this.tutorialTimelinePaused) {
+        this.beat += dt / this.beatSeconds;
+      }
       this.track.syncTarget(this.beat);
+      this.maybePauseFirstWaveTutorialTimeline();
     }
 
     this.updateWaveClearOutro(dt);
@@ -1852,6 +2332,14 @@ export class GameScene {
     this.updateBeatIndicator();
     this.updateWaveProgressTracker(dt);
     this.updateResourceVisuals(dt);
+    this.updateTutorialSpawnQueue(dt);
+    this.updateFirstWaveTutorialCompletion(dt);
+    this.tutorial.update({
+      scene: this,
+      dt,
+      beat: this.beat,
+      active: this.active,
+    });
 
     if (!this.active) {
       return;
@@ -2254,13 +2742,15 @@ export class GameScene {
         : 1;
       const chunkSlow = this.updateEnemySlowEffects(enemy, movementDt);
       const knockbackRecoverySpeed = updateKnockbackRecoverySpeedMultiplier(enemy, movementDt);
-      enemy.y += enemy.speed *
-        laneBoosts[enemy.lane] *
-        (speedMultipliers.get(enemy.id) ?? 1) *
-        elapseSlow *
-        chunkSlow *
-        knockbackRecoverySpeed *
-        movementDt;
+      if (!enemy.movementDisabled) {
+        enemy.y += enemy.speed *
+          laneBoosts[enemy.lane] *
+          (speedMultipliers.get(enemy.id) ?? 1) *
+          elapseSlow *
+          chunkSlow *
+          knockbackRecoverySpeed *
+          movementDt;
+      }
     });
 
     const knockbacksResolvedSpacing = this.updateKnockbacksFixedStep(movementDt);
@@ -2349,10 +2839,13 @@ export class GameScene {
     killed.forEach((enemy) => {
       this.addEnemyDeathPuff(enemy);
       this.spreadAspectFromDeath(enemy);
-      if (!enemy.scored) {
+      this.handleTutorialEnemyKilled(enemy);
+      if (!enemy.tutorialDummy && !enemy.scored) {
         enemy.scored = true;
         this.waveKills += 1;
-        this.score += ENEMY_KILL_SCORE;
+        if (this.waveRunner.active) {
+          this.score += ENEMY_KILL_SCORE;
+        }
       }
     });
 
@@ -2436,7 +2929,9 @@ export class GameScene {
     const combo = Number.isFinite(this.combo) ? this.combo : 0;
     const comboDelta = Number.isFinite(timing.comboDelta) ? timing.comboDelta : -0.14;
     this.combo = clamp(combo + comboDelta, 0, 1);
-    this.score += Number.isFinite(timing.score) ? timing.score : 0;
+    if (this.waveRunner.active) {
+      this.score += Number.isFinite(timing.score) ? timing.score : 0;
+    }
     this.floaters.push({
       lane,
       y: 0.88,
@@ -2445,6 +2940,28 @@ export class GameScene {
       ttl: 0.62,
     });
     this.flashBeatBar(isCorrect, targetBeat, color);
+    this.tutorial.onTimingResult({
+      scene: this,
+      lane,
+      timing,
+      targetBeat,
+      color,
+      isCorrect,
+      beat: this.beat,
+    });
+    this.handleFirstWaveTutorialTiming({ lane, isCorrect });
+  }
+
+  handleFirstWaveTutorialTiming({ lane, isCorrect }) {
+    const step = this.tutorial.getGameplayStep();
+    if (step?.id === "middle-lane-shot" && lane === 1) {
+      this.startFirstWaveCleanShotChallenge();
+      return;
+    }
+
+    if (step?.id === "clean-shot-challenge" && !isCorrect) {
+      this.resetFirstWaveChallengeCounter();
+    }
   }
 
   finishShotProgress(shot) {
@@ -2569,7 +3086,12 @@ export class GameScene {
   }
 
   releaseLane(lane) {
-    if (!this.active || !this.activeElapse || this.activeElapse.lane !== lane) {
+    if (
+      !this.active ||
+      !this.canUseGameplayInputLane(lane) ||
+      !this.activeElapse ||
+      this.activeElapse.lane !== lane
+    ) {
       return;
     }
 
@@ -2669,7 +3191,7 @@ export class GameScene {
   }
 
   fireLane(lane) {
-    if (!this.active || this.beat - this.lastShotAt < 0.12) {
+    if (!this.active || !this.canUseGameplayInputLane(lane) || this.beat - this.lastShotAt < 0.12) {
       return;
     }
 
@@ -2997,7 +3519,17 @@ export class GameScene {
     this.pendingPiercingImpacts = [];
     this.pendingAspectSpreads = [];
     this.frameEnemyIndex = null;
-    this.intermissionView.renderGameOver(this.score, this.waveIndex);
+    this.persistRunScore();
+    this.intermissionView.renderGameOver(this.score, this.waveIndex, this.scoreSaveResult);
+  }
+
+  persistRunScore() {
+    if (this.props.saveScore === false || this.scoreSaveResult || this.score <= 0) {
+      return this.scoreSaveResult;
+    }
+
+    this.scoreSaveResult = recordLeaderboardScore(this.playerTag, this.score);
+    return this.scoreSaveResult;
   }
 
   updateHud() {
@@ -3106,7 +3638,10 @@ export class GameScene {
       floaters: this.floaters,
       track: this.track,
       beat: this.beat,
-      spawnWarnings: this.waveRunner.getSpawnWarnings(this.beat),
+      spawnWarnings: [
+        ...this.waveRunner.getSpawnWarnings(this.beat),
+        ...this.getTutorialSpawnWarnings(),
+      ],
       speedBoosts: getLaneSpeedBoosts(enemyIndex),
       activeBeams: this.getElapseBeamView(),
       comboMultiplier: this.damageMultiplier(),

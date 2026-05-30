@@ -109,14 +109,12 @@ function drawComboBar(
   ctx.restore();
 }
 
-export function drawComboMeter(renderer, comboMultiplier, comboCap, beat) {
+export function getComboMeterRects(renderer, comboCap) {
   const capExtra = Math.max(0, comboCap - 1);
   if (capExtra <= 0) {
-    return;
+    return [];
   }
 
-  const comboExtra = clamp(comboMultiplier - 1, 0, capExtra);
-  const visualizerPulse = getComboVisualizerPulse(beat);
   const pairCount = Math.ceil(capExtra);
   const topY = 24 + COMBO_METER.verticalMargin;
   const bottomY = renderer.yToScreen(ENEMY_BREACH_Y) - COMBO_METER.verticalMargin;
@@ -135,42 +133,70 @@ export function drawComboMeter(renderer, comboMultiplier, comboCap, beat) {
     COMBO_METER.barWidth.min,
     COMBO_METER.barWidth.max,
   );
-  const fillWidth = Math.max(COMBO_METER.minFillWidth, barWidth - COMBO_METER.fillInset);
+  const rects = [];
 
   for (let index = 0; index < pairCount; index += 1) {
     const capSegment = clamp(capExtra - index, 0, 1);
-    const comboSegment = clamp(comboExtra - index, 0, capSegment);
-    const visualizerSegment = comboSegment * visualizerPulse;
     if (capSegment <= 0) {
       continue;
     }
 
     const offset = index * (barWidth + COMBO_METER.barGap);
+    const rectTop = bottomY - playHeight * capSegment;
     const leftX = renderer.arena.x - arenaGap - barWidth - offset;
     const rightX = renderer.arena.x + renderer.arena.width + arenaGap + offset;
-    drawComboBar(
-      renderer.ctx,
-      leftX,
-      topY,
-      bottomY,
+    rects.push({
+      left: leftX,
+      top: rectTop,
+      right: leftX + barWidth,
+      bottom: bottomY,
+      width: barWidth,
+      height: bottomY - rectTop,
+      playTop: topY,
       playHeight,
-      barWidth,
-      fillWidth,
-      capSegment,
-      comboSegment,
-      visualizerSegment,
-    );
-    drawComboBar(
-      renderer.ctx,
-      rightX,
-      topY,
-      bottomY,
+    });
+    rects.push({
+      left: rightX,
+      top: rectTop,
+      right: rightX + barWidth,
+      bottom: bottomY,
+      width: barWidth,
+      height: bottomY - rectTop,
+      playTop: topY,
       playHeight,
-      barWidth,
-      fillWidth,
-      capSegment,
-      comboSegment,
-      visualizerSegment,
-    );
+    });
   }
+
+  return rects;
+}
+
+export function drawComboMeter(renderer, comboMultiplier, comboCap, beat) {
+  const capExtra = Math.max(0, comboCap - 1);
+  if (capExtra <= 0) {
+    return;
+  }
+
+  const comboExtra = clamp(comboMultiplier - 1, 0, capExtra);
+  const visualizerPulse = getComboVisualizerPulse(beat);
+  const rects = getComboMeterRects(renderer, comboCap);
+  const fillWidth = Math.max(COMBO_METER.minFillWidth, (rects[0]?.width ?? 0) - COMBO_METER.fillInset);
+
+  rects.forEach((rect, index) => {
+    const pairIndex = Math.floor(index / 2);
+    const capSegment = clamp(capExtra - pairIndex, 0, 1);
+    const comboSegment = clamp(comboExtra - pairIndex, 0, capSegment);
+    const visualizerSegment = comboSegment * visualizerPulse;
+    drawComboBar(
+      renderer.ctx,
+      rect.left,
+      rect.playTop,
+      rect.bottom,
+      rect.playHeight,
+      rect.width,
+      fillWidth,
+      capSegment,
+      comboSegment,
+      visualizerSegment,
+    );
+  });
 }

@@ -34,8 +34,17 @@ export const STORE_CYCLE = [
   "wrecker",
 ];
 
-function createWarehouseChoices() {
-  return pickRandom(BULLET_POOL, 3).map((id) => ({
+const FIRST_WAREHOUSE_EXCLUDED_BULLETS = new Set(["chip", "elapse"]);
+
+function createWarehouseChoices(runState = {}) {
+  const isFirstWarehouse =
+    runState.storeCycleIndex === 0 &&
+    !runState.forceStoreId;
+  const pool = isFirstWarehouse
+    ? BULLET_POOL.filter((id) => !FIRST_WAREHOUSE_EXCLUDED_BULLETS.has(id))
+    : BULLET_POOL;
+
+  return pickRandom(pool, 3).map((id) => ({
     kind: "add-piece",
     bulletId: id,
     title: `Add ${getBulletDef(id).name}`,
@@ -120,7 +129,7 @@ function createWorkshopChoices(track, runState = {}) {
 
 function createChoicesForStore(storeId, track, runState) {
   if (storeId === "warehouse") {
-    return createWarehouseChoices(track, runState);
+    return createWarehouseChoices(runState);
   }
 
   if (storeId === "whetstone" || storeId === "wrecker") {

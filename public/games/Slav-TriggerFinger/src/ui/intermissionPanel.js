@@ -272,6 +272,7 @@ export function renderIntermissionPanel({
   woeDraft = null,
   debugTools = "",
   message = "",
+  tutorial = null,
 }) {
   const hasStore = Boolean(storeOffer);
   const hasCredits = storePicks > 0;
@@ -284,6 +285,13 @@ export function renderIntermissionPanel({
     ? `${escapeHtml(getSlotName(selected))} | ${renderTimingStats(selected, selectedDef)} | ${renderBulletDescription(selected, selectedDef)}`
     : "Select a bullet to inspect it.";
   const isReadyCheck = isFirst && !debugTools && !hasStore && !hasWoeDraft;
+  const tutorialNotes = tutorial?.enabled && tutorial.notes?.length
+    ? `
+      <div class="tutorial-note-list">
+        ${tutorial.notes.map((note) => `<p>${escapeHtml(note)}</p>`).join("")}
+      </div>
+    `
+    : "";
 
   const choiceHtml = isReadyCheck
     ? ""
@@ -358,6 +366,7 @@ export function renderIntermissionPanel({
       <div class="intermission-shell ${isReadyCheck ? "is-ready-check" : ""}">
         ${choiceHtml}
         <section class="editor-tab ${isReadyCheck ? "is-ready-check" : ""}" data-inventory-drop>
+          ${tutorialNotes}
           ${isReadyCheck ? "" : `<p class="selected-copy">${message || selectedCopy}</p>`}
           ${renderTrackEditor(track, hiddenEditorUids, scrapChips)}
           ${renderInventory(track, hiddenEditorUids)}
@@ -373,13 +382,17 @@ export function renderIntermissionPanel({
   `;
 }
 
-export function renderGameOverPanel(score, waveIndex) {
+export function renderGameOverPanel(score, waveIndex, scoreSave = null) {
+  const scoreLine = scoreSave
+    ? `${scoreSave.tag} | ${scoreSave.isNewBest ? "New best" : "Best"} ${scoreSave.best}`
+    : "";
   return `
     <section class="upgrade-panel">
       <div class="upgrade-heading">
         <div>
           <h2>Run Over</h2>
           <p>Score ${Math.round(score)}. Cleared ${waveIndex} wave${waveIndex === 1 ? "" : "s"}.</p>
+          ${scoreLine ? `<p>${scoreLine}</p>` : ""}
         </div>
         <button class="secondary-button" data-action="menu">Menu</button>
       </div>

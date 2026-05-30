@@ -86,10 +86,10 @@ export class IntermissionView {
     this.restoreScroll(scrollState);
   }
 
-  renderGameOver(score, waveIndex) {
+  renderGameOver(score, waveIndex, scoreSave = null) {
     const shouldAnimate = this.overlay.hidden;
     this.overlay.hidden = false;
-    this.overlay.innerHTML = renderGameOverPanel(score, waveIndex);
+    this.overlay.innerHTML = renderGameOverPanel(score, waveIndex, scoreSave);
     if (shouldAnimate) {
       this.playEnterAnimation();
     }

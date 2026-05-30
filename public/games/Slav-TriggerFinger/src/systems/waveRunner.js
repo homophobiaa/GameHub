@@ -80,6 +80,9 @@ export class WaveRunner {
     this.waveIndex = 0;
     this.active = false;
     this.lastLane = randomLane();
+    this.wave = null;
+    this.startBeat = 0;
+    this.spawnIndex = 0;
     this.spawnSchedule = [];
     this.patterns = [];
     this.hurrySpawnBeat = null;
@@ -596,6 +599,7 @@ export class WaveRunner {
   finish() {
     this.active = false;
     this.spawnSchedule = [];
+    this.spawnIndex = 0;
     this.patterns = [];
     this.hurrySpawnBeat = null;
     this.aspectGrantors = [];

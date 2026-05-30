@@ -12,6 +12,9 @@ const EARLY_DURATION_TRIM_BY_WAVE = {
   3: 4,
   4: 2,
 };
+const DURATION_MULTIPLIER_BY_WAVE = {
+  0: 4 / 3,
+};
 const BASE_BASIC_COUNT = 11;
 const BASIC_COUNT_PER_WAVE = 2.8;
 const SPECIAL_START_FRACTION = 0.16;
@@ -25,7 +28,8 @@ function randomLaneRule() {
 
 function getDurationBeats(waveIndex) {
   const trim = EARLY_DURATION_TRIM_BY_WAVE[waveIndex] ?? 0;
-  return BASE_DURATION_BEATS + waveIndex * DURATION_PER_WAVE_BEATS - trim;
+  const baseDuration = BASE_DURATION_BEATS + waveIndex * DURATION_PER_WAVE_BEATS - trim;
+  return baseDuration * (DURATION_MULTIPLIER_BY_WAVE[waveIndex] ?? 1);
 }
 
 function createSpecialBeat(index, count, durationBeats) {
