@@ -127,8 +127,20 @@
     "description": "Уеб базирана игра с тъмен премиум дизайн. Отгатни логиката зад 65+ емоджи задачи в 8 категории!",
     "screenshot": "/games/Boyan-EmojiLogicGame/boyan.png",
     "status": "Playable",
-    "tags": ["Student Project", "Collab", "Game"],
+    "tags": ["Student Project", "Game"],
     "branch": "Boyan",
     "playUrl": "/games/Boyan-EmojiLogicGame/index.html"
+  },
+    {
+    "id": "filip",
+    "name": "Word Scramble",
+    "creator": "Filip",
+    "creatorGithub": "FilipVelkov08",
+    "description": "A word scrambling game where you unscramble words to form valid sentences.",
+    "screenshot": "/games/Filip-WordScramble/filip.png",
+    "status": "Playable",
+    "tags": ["Student Project", "Game"],
+    "branch": "Filip",
+    "playUrl": "/games/Filip-WordScramble/index.html"
   }
 ]
