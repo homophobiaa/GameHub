@@ -51,7 +51,6 @@ Each game is developed independently by different students and integrated into t
   <img src="./Docs/Screenshots/credits.png" width="49%" />
   <img src="./Docs/Screenshots/games.png" width="70%" />
 </p>
----
 
 # Games
 
@@ -60,121 +59,121 @@ Each game is developed independently by different students and integrated into t
 ## 🎯 Deyan
 
 ### Description
-Short description coming soon.
+A chaotic speed-based twist on the classic Tower of Hanoi where players race against time and each other to solve increasingly difficult puzzles with competitive mechanics and arcade-style pressure.
 
 ### Preview
 
-![Deyan Game](./screenshots/deyan-game.png)
+![Deyan Hanoi Royale](./public/games/Deyan-HanoiRoyale/deyan.png)
 
 ---
 
 ## 🎯 Radoslav
 
 ### Description
-Short description coming soon.
+A fast-paced neon reflex arcade game where players must stop a precision timer as close as possible to a randomly generated target second.
 
 ### Preview
 
-![Radoslav Game](./screenshots/radoslav-game.png)
+![Radoslav Time Strike](./public/games/Radoslav-TimeStrike/radoslav.png)
 
 ---
 
 ## 🎯 Ivailo
 
 ### Description
-Short description coming soon.
+Test your typing speed in this fast-paced arena. How many words per minute can you hit?
 
 ### Preview
 
-![Ivailo Game](./screenshots/ivailo-game.png)
+![Ivailo Speed Typing Arena](./public/games/Ivailo-SpeedTypingArena/ivailo.png)
 
 ---
 
 ## 🎯 Miroslav
 
 ### Description
-Short description coming soon.
+Sharpen your reflexes and mouse accuracy in this simple but addictive aim trainer.
 
 ### Preview
 
-![Miroslav Game](./screenshots/miroslav-game.png)
+![Miroslav Aim Trainer](./public/games/Miroslav-AimTrainer/miroslav.png)
 
 ---
 
 ## 🎯 Hristiqn
 
 ### Description
-Short description coming soon.
+A classic card-matching memory game. Flip the cards, find the pairs, and beat your best score.
 
 ### Preview
 
-![Hristiqn Game](./screenshots/hristiqn-game.png)
+![Hristiqn Memory Game](./public/games/Hristiqn-MemoryGameJS/hristiqn.png)
 
 ---
 
 ## 🎯 Dimitar
 
 ### Description
-Short description coming soon.
+An original student-made game created for the SoftUni Buditel game showcase.
 
 ### Preview
 
-![Dimitar Game](./screenshots/dimitar-game.png)
+![Dimitar Game](./public/games/Dimitar/dimitar.png)
 
 ---
 
 ## 🎯 Lubo
 
 ### Description
-Short description coming soon.
+Test your reflexes by clicking highlighted cells as fast as possible in this grid-based reaction challenge.
 
 ### Preview
 
-![Lubo Game](./screenshots/lubo-game.png)
+![Lubo Reaction Grid Game](./public/games/Lubo-ReactionGridGame/lubo.png)
 
 ---
 
 ## 🎯 Slav
 
 ### Description
-Short description coming soon.
+A lane-based rhythm shooter where you build and rearrange a looping bullet timeline, then time your shots across three lanes to survive escalating enemy waves.
 
 ### Preview
 
-![Slav Game](./screenshots/slav-game.png)
+![Slav Trigger Finger](./public/games/Slav-TriggerFinger/slav.png)
 
 ---
 
 ## 🎯 Damyan
 
 ### Description
-Short description coming soon.
+A classic Simon Says sequence game. Watch the pattern, repeat it correctly, and see how far you can go.
 
 ### Preview
 
-![Damyan Game](./screenshots/damyan-game.png)
+![Damyan Simon](./public/games/Damyan-Simon/damyan.png)
 
 ---
 
 ## 🎯 Viktor
 
 ### Description
-Short description coming soon.
+A colorful arcade challenge focused on matching colors quickly and accurately.
 
 ### Preview
 
-![Viktor Game](./screenshots/viktor-game.png)
+![Viktor Color Match Arena](./public/games/Viktor-ColorMatchArena/viktor.png)
 
 ---
 
-## 🎯 Filip-Boqn
+## 🎯 Filip & Boyan
 
 ### Description
-Short description coming soon.
+A premium dark-themed emoji puzzle game featuring 65+ challenges across 8 categories. Decode the hidden logic behind each emoji sequence.
 
 ### Preview
 
-![Filip-Boqn Game](./screenshots/filip-boqn-game.png)
+![Filip & Boyan Emoji Logic Game](./public/games/FilipBoqn-EmojiLogicGame/filipboqn.png)
 
 ---
 
