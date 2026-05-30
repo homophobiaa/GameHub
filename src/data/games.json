@@ -120,18 +120,15 @@
     "playUrl": "/games/Viktor-ColorMatchArena/index.html"
   },
   {
-    "id": "filip-boqn",
+    "id": "boqn",
     "name": "Emoji Logic Game",
-    "creator": "Filip",
-    "creatorGithub": "FilipVelkov08",
-    "coCreators": [
-      { "name": "Boyan", "github": "BoyanTsarski" }
-    ],
+    "creator": "Boyan",
+    "creatorGithub": "BoyanTsarski",
     "description": "Уеб базирана игра с тъмен премиум дизайн. Отгатни логиката зад 65+ емоджи задачи в 8 категории!",
-    "screenshot": "/games/FilipBoqn-EmojiLogicGame/filipboqn.png",
+    "screenshot": "/games/Boyan-EmojiLogicGame/boyan.png",
     "status": "Playable",
     "tags": ["Student Project", "Collab", "Game"],
-    "branch": "Filip-Boqn",
-    "playUrl": "/games/FilipBoqn-EmojiLogicGame/index.html"
+    "branch": "Boyan",
+    "playUrl": "/games/Boyan-EmojiLogicGame/index.html"
   }
 ]
