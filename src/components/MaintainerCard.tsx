@@ -74,7 +74,7 @@ export default function MaintainerCard() {
               <div className="absolute -inset-2 rounded-full bg-gradient-to-br from-accent/40 to-accent-violet/40 blur-2xl" />
               <div className="relative h-24 w-24 rounded-full ring-2 ring-white/10 overflow-hidden bg-gradient-to-br from-accent to-accent-violet">
                 <img
-                  src="/public/pfp/deyan.jpg"
+                  src="/pfp/deyan.jpg"
                   alt="Deyan"
                   draggable={false}
                   onContextMenu={(e) => e.preventDefault()}
