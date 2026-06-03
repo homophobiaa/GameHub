@@ -87,7 +87,7 @@ export default function Navbar({ active, onNavigate }: Props) {
 
         <div className="hidden md:flex items-center gap-2">
           <a
-            href="https://github.com/homophobiaa"
+            href="https://github.com/homophobiaa/GameHub"
             target="_blank"
             rel="noreferrer noopener"
             className="btn-ghost"
