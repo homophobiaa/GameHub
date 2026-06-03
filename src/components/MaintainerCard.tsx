@@ -74,14 +74,16 @@ export default function MaintainerCard() {
               <div className="absolute -inset-2 rounded-full bg-gradient-to-br from-accent/40 to-accent-violet/40 blur-2xl" />
               <div className="relative h-24 w-24 rounded-full ring-2 ring-white/10 overflow-hidden bg-gradient-to-br from-accent to-accent-violet">
                 <img
-                  src="/pfp.png"
+                  src="public/pfp/deyan.jpg"
                   alt="Deyan"
+                  draggable={false}
+                  onContextMenu={(e) => e.preventDefault()}
                   className="h-full w-full object-cover"
                 />
-                <div className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-canvas-deep border-2 border-canvas-deep grid place-items-center">
-                  <div className="h-full w-full rounded-full bg-gradient-to-br from-amber-300 to-amber-500 grid place-items-center">
-                    <Crown className="h-3.5 w-3.5 text-canvas-deep" strokeWidth={2.5} />
-                  </div>
+              </div>
+              <div className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-canvas-deep border-2 border-canvas-deep grid place-items-center">
+                <div className="h-full w-full rounded-full bg-gradient-to-br from-amber-300 to-amber-500 grid place-items-center">
+                  <Crown className="h-3.5 w-3.5 text-canvas-deep" strokeWidth={2.5} />
                 </div>
               </div>
             </div>

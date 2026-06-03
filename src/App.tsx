@@ -89,7 +89,7 @@ export default function App() {
                   </span>
                   <Sparkles className="h-3.5 w-3.5 text-accent" />
                   <span className="text-xs font-medium tracking-wide text-ink-muted">
-                    SoftUni Event 2026 · Student Showcase
+                    SoftUni Buditel Fest 2026 · Student Showcase
                   </span>
                 </motion.div>
 
