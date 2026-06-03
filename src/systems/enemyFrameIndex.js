@@ -82,6 +82,21 @@ export class EnemyFrameIndex {
     return this.targetableEnemies().slice(0, count);
   }
 
+  closestTargetableWithPhasingGhostsLast(count) {
+    const targets = this.targetableEnemies();
+    const normalTargets = targets.filter((enemy) =>
+      !(enemy.type === "ghost" && enemy.ghostCharges > 0)
+    );
+    if (normalTargets.length >= count) {
+      return normalTargets.slice(0, count);
+    }
+
+    const phasingGhosts = targets.filter((enemy) =>
+      enemy.type === "ghost" && enemy.ghostCharges > 0
+    );
+    return [...normalTargets, ...phasingGhosts].slice(0, count);
+  }
+
   leapTargets() {
     return this.live.filter((enemy) =>
       enemy.hp > 0 &&

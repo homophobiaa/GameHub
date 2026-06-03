@@ -290,7 +290,7 @@ const BULLET_HANDLERS = {
   chip({ def, slot, enemies, currentBeat, beatSeconds, events, scale, chipEffects }) {
     const chipSummary = summarizeChipEffects(chipEffects);
     const count = slot.upgraded ? def.upgradedTargetCount : def.targetCount;
-    closestEnemies(enemies, count).forEach((enemy) => {
+    closestEnemies(enemies, count, { phasingGhostsLast: true }).forEach((enemy) => {
       addSlashEffect(events, enemy);
       const result = applyDamage(enemy, scale(def.damage), currentBeat, events, { enemies });
       if (result.damaged) {
