@@ -18,8 +18,11 @@ export function elapseBeamEnemies(enemies, lane) {
   return toEnemyFrameIndex(enemies).elapseTargetsInLane(lane);
 }
 
-export function closestEnemies(enemies, count) {
-  return toEnemyFrameIndex(enemies).closestTargetable(count);
+export function closestEnemies(enemies, count, options = {}) {
+  const enemyIndex = toEnemyFrameIndex(enemies);
+  return options.phasingGhostsLast
+    ? enemyIndex.closestTargetableWithPhasingGhostsLast(count)
+    : enemyIndex.closestTargetable(count);
 }
 
 export function findBarrierInterceptor(enemies, lane, currentBeat, intendedTarget) {

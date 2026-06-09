@@ -213,6 +213,7 @@ export function resolveElapseStart({
   lane,
   enemies,
   currentBeat,
+  beatSeconds = 1,
   damageMultiplier = 1,
   chipEffects = [],
   upgraded = false,

@@ -1375,8 +1375,8 @@ export class GameScene {
       return { ok: false, reason: "Pick a bullet corner." };
     }
 
-    if (host.id === "pair" && host.upgraded) {
-      return { ok: false, reason: "Upgraded Pair has no chunk socket space." };
+    if (this.isChunkHostBlocked(host)) {
+      return { ok: false, reason: `${getSlotName(host)} has no chunk socket space.` };
     }
 
     const domainResult = this.canPlaceChipDomainReduction(chip, host, corner);
@@ -1470,7 +1470,7 @@ export class GameScene {
         !host ||
         !isHostOnTrack ||
         !CHIP_CORNER_SET.has(chip.corner) ||
-        (host.id === "pair" && host.upgraded) ||
+        this.isChunkHostBlocked(host) ||
         occupied ||
         !this.canPlaceChipDomainReduction(chip, host, chip.corner).ok
       ) {
@@ -1480,6 +1480,10 @@ export class GameScene {
       }
     });
     this.syncChunkDomainReductions();
+  }
+
+  isChunkHostBlocked(host) {
+    return host?.id === "chip" && host.upgraded;
   }
 
   getCombatChipsForSlot(uid) {
@@ -3381,7 +3385,7 @@ export class GameScene {
     this.pendingUpgrade = false;
     this.whetstoneCandidateUid = null;
     this.wreckerCandidateUid = null;
-    this.editorMessage = `All ${def.name}s now spread ${aspect.name} to nearby basics when killed.`;
+    this.editorMessage = `Defeated ${def.name}s now make nearby basics ${aspect.spreadDescription}.`;
     this.showIntermission();
   }
 

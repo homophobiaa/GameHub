@@ -66,7 +66,7 @@ export function createWoeAspectChoice(type) {
     kind: "aspect",
     type,
     title: `${def.name} Spreading`,
-    copy: `All ${def.name}s spread ${aspect.name} to nearby basics when killed.`,
+    copy: `Defeated ${def.name}s make nearby basics ${aspect.spreadDescription}.`,
     color: aspect.color ?? def.color,
   };
 }
